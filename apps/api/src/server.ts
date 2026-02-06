@@ -10,6 +10,7 @@ import { registerReminderRoutes } from "./routes/reminders";
 import { buildAuthPreHandler } from "./routes/auth";
 import { ChatService } from "./services/chat-service";
 import { createSummaryProvider, type SummaryProvider } from "./gpt/summary-slot";
+import { createClassificationProvider, type ClassificationProvider } from "./gpt/classifier";
 import { startReminderScheduler } from "./push/scheduler";
 
 declare module "fastify" {
@@ -22,6 +23,7 @@ declare module "fastify" {
 type CreateServerOptions = {
   repo?: AppRepository;
   summaryProvider?: SummaryProvider;
+  classificationProvider?: ClassificationProvider;
   startScheduler?: boolean;
 };
 
@@ -31,7 +33,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
 
   const repo = options.repo ?? createRepository();
   const summaryProvider = options.summaryProvider ?? createSummaryProvider();
-  const chatService = new ChatService(repo, summaryProvider);
+  const classificationProvider = options.classificationProvider ?? createClassificationProvider();
+  const chatService = new ChatService(repo, summaryProvider, classificationProvider);
 
   registerInstallationRoutes(app, repo);
 

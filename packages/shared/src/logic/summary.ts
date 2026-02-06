@@ -25,6 +25,47 @@ function hasNgramOverlap(source: string, target: string): boolean {
   return false;
 }
 
+function removeLeadingDueExpression(text: string): string {
+  let value = text.trim();
+
+  value = value.replace(/^(タスク|todo|TODO)\s*[:：]?\s*/i, "");
+
+  const patterns = [
+    /^(今日|明日|明後日|来週(?:の)?\s*[月火水木金土日]曜?|次の\s*[月火水木金土日]曜?)\s*/,
+    /^(?:\d{4}[\/-])?\d{1,2}[\/-]\d{1,2}\s*/,
+    /^\d{1,2}月\s*\d{1,2}日\s*/,
+    /^(午前|午後)?\s*\d{1,2}(?:\s*[:：]\s*\d{1,2})?\s*(?:時\s*\d{1,2}\s*分?|時|分)?\s*/,
+    /^(に|までに|まで|から|頃|ごろ)\s*/
+  ];
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const pattern of patterns) {
+      const next = value.replace(pattern, "");
+      if (next !== value) {
+        value = next.trim();
+        changed = true;
+      }
+    }
+  }
+
+  return value;
+}
+
+function removeTrailingInstruction(text: string): string {
+  return text
+    .replace(/\s*(を)?(リマインドして(?:ください)?|通知して(?:ください)?|思い出させて(?:ください)?|忘れないように(?:して)?|登録して(?:ください)?|追加して(?:ください)?)\s*$/i, "")
+    .replace(/[。！？!?\s]+$/g, "")
+    .trim();
+}
+
+function normalizeTaskCore(text: string): string {
+  const stripped = removeLeadingDueExpression(text);
+  const cleaned = removeTrailingInstruction(stripped);
+  return cleaned.trim();
+}
+
 export function fallbackSummarySlot(input: string): string {
   const normalized = input.trim().replace(/[\n\r]+/g, " ");
   if (!normalized) return "内容の記録";
@@ -52,4 +93,20 @@ export function normalizeSummarySlot(slot: string, source: string): string {
     return fallbackSummarySlot(source);
   }
   return cleaned;
+}
+
+export function normalizeTaskTitle(slot: string, source: string): string {
+  const normalizedSlot = normalizeSummarySlot(slot, source);
+  const sourceCandidate = normalizeTaskCore(source);
+  const slotCandidate = normalizeTaskCore(normalizedSlot);
+
+  if (sourceCandidate.length >= 2 && sourceCandidate.length <= 80) {
+    return sourceCandidate;
+  }
+
+  if (slotCandidate.length >= 2 && slotCandidate.length <= 80) {
+    return slotCandidate;
+  }
+
+  return normalizedSlot;
 }

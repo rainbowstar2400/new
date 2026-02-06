@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { fallbackSummarySlot, normalizeSummarySlot } from "@new/shared";
+import { fallbackSummarySlot, normalizeSummarySlot, normalizeTaskTitle } from "@new/shared";
 import { loadEnv } from "../env";
 
 export type SummaryFacts = {
@@ -10,9 +10,15 @@ export type SummaryFacts = {
 export type SummaryProvider = (inputText: string, facts: SummaryFacts) => Promise<string>;
 
 function buildPrompt(inputText: string, facts: SummaryFacts): string {
+  const taskRule =
+    facts.kind === "task"
+      ? "- taskでは日時やリマインド指示語を含めず、作業本体のみ"
+      : "- memo/confirmでは入力語句を最大限保持";
+
   return [
     "あなたは入力文の要約スロット(〇〇部分)のみを作る補助です。",
     "制約:",
+    taskRule,
     "- 未確定の日時や対象を追加しない",
     "- 入力語句を可能な限り保持",
     "- 80文字以内",
@@ -26,7 +32,10 @@ function buildPrompt(inputText: string, facts: SummaryFacts): string {
 export function createSummaryProvider(): SummaryProvider {
   const env = loadEnv();
   if (!env.OPENAI_API_KEY) {
-    return async (inputText) => fallbackSummarySlot(inputText);
+    return async (inputText, facts) => {
+      const slot = fallbackSummarySlot(inputText);
+      return facts.kind === "task" ? normalizeTaskTitle(slot, inputText) : slot;
+    };
   }
 
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -49,9 +58,14 @@ export function createSummaryProvider(): SummaryProvider {
       });
 
       const candidate = completion.choices[0]?.message?.content ?? "";
-      return normalizeSummarySlot(candidate, inputText);
+      const normalized = normalizeSummarySlot(candidate, inputText);
+      if (facts.kind === "task") {
+        return normalizeTaskTitle(normalized, inputText);
+      }
+      return normalized;
     } catch {
-      return fallbackSummarySlot(inputText);
+      const slot = fallbackSummarySlot(inputText);
+      return facts.kind === "task" ? normalizeTaskTitle(slot, inputText) : slot;
     }
   };
 }

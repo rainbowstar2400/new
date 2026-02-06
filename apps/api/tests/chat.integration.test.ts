@@ -187,6 +187,71 @@ describe("chat api integration", () => {
     expect(list.json().items[0].memoCategory).toBe("want");
   });
 
+  it("strips due expression from task title", async () => {
+    const repo = new MemoryRepository();
+    const app = await createServer({
+      repo,
+      startScheduler: false,
+      summaryProvider: async (text) => text
+    });
+
+    const reg = await app.inject({ method: "POST", url: "/v1/installations/register", payload: {} });
+    const session = reg.json();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers: { authorization: `Bearer ${session.accessToken}` },
+      payload: { text: "明日18時に洗濯" }
+    });
+
+    expect(response.json().actionType).toBe("saved");
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/tasks",
+      headers: { authorization: `Bearer ${session.accessToken}` }
+    });
+
+    expect(list.json().items[0].title).toBe("洗濯");
+  });
+
+  it("uses AI classification result when provided", async () => {
+    const repo = new MemoryRepository();
+    const app = await createServer({
+      repo,
+      startScheduler: false,
+      summaryProvider: async (text) => text,
+      classificationProvider: async () => ({
+        kind: "memo",
+        memoCategory: "want",
+        confidence: 0.92,
+        reason: "ai_test"
+      })
+    });
+
+    const reg = await app.inject({ method: "POST", url: "/v1/installations/register", payload: {} });
+    const session = reg.json();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers: { authorization: `Bearer ${session.accessToken}` },
+      payload: { text: "Aさんへ連絡" }
+    });
+
+    expect(response.json().actionType).toBe("saved");
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/tasks",
+      headers: { authorization: `Bearer ${session.accessToken}` }
+    });
+
+    expect(list.json().items[0].kind).toBe("memo");
+    expect(list.json().items[0].memoCategory).toBe("want");
+  });
+
   it("asks target confirmation when multiple tasks exist (UC-17)", async () => {
     const repo = new MemoryRepository();
     const app = await createServer({

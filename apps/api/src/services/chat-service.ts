@@ -8,6 +8,7 @@ import {
   errorMessage,
   fallbackSummarySlot,
   isPast,
+  normalizeTaskTitle,
   memoCategorySavedMessage,
   parseDueFromText,
   parseOffsetText,
@@ -19,11 +20,13 @@ import {
   type ConversationContext,
   type Task,
   type Reminder,
-  type MemoCategory
+  type MemoCategory,
+  type ClassificationResult
 } from "@new/shared";
 import { newId } from "../id";
 import type { AppRepository } from "../repos/types";
 import type { SummaryProvider } from "../gpt/summary-slot";
+import type { ClassificationProvider } from "../gpt/classifier";
 
 type ChatInput = {
   installationId: string;
@@ -56,7 +59,8 @@ function memoCategoryLabel(category: MemoCategory): string {
 export class ChatService {
   constructor(
     private readonly repo: AppRepository,
-    private readonly summaryProvider: SummaryProvider
+    private readonly summaryProvider: SummaryProvider,
+    private readonly classificationProvider: ClassificationProvider
   ) {}
 
   async handleMessage(input: ChatInput): Promise<ChatMessageResponse> {
@@ -110,7 +114,7 @@ export class ChatService {
       return this.handleOffsetRequest(userText, input.installationId, parsedOffset.offsetMinutes);
     }
 
-    const classification = classifyInput(userText);
+    const classification = await this.resolveClassification(userText);
 
     if (classification.kind === "ambiguous") {
       const summary = await this.safeSummary(userText, "confirm");
@@ -163,7 +167,7 @@ export class ChatService {
     defaultDueTime?: string
   ): Promise<ChatMessageResponse> {
     const parsedDue = parseDueFromText(originalText, { defaultDueTime });
-    const summary = await this.safeSummary(originalText, "task", parsedDue?.dueAt ?? null);
+    const summary = await this.safeTaskSummary(originalText, parsedDue?.dueAt ?? null);
 
     if (!parsedDue) {
       await this.setContext({
@@ -834,6 +838,53 @@ export class ChatService {
 
   private async setContext(context: ConversationContext): Promise<void> {
     await this.repo.upsertConversationContext(context);
+  }
+
+  private async resolveClassification(text: string): Promise<ClassificationResult> {
+    const deterministic = classifyInput(text);
+
+    if (
+      deterministic.reason === "explicit_task_prefix" ||
+      deterministic.reason === "explicit_memo_prefix"
+    ) {
+      return deterministic;
+    }
+
+    try {
+      const ai = await this.classificationProvider(text, {
+        ruleKind: deterministic.kind,
+        ruleReason: deterministic.reason,
+        ruleConfidence: deterministic.confidence
+      });
+
+      if (!ai) return deterministic;
+      return this.pickClassification(deterministic, ai);
+    } catch {
+      return deterministic;
+    }
+  }
+
+  private pickClassification(
+    deterministic: ClassificationResult,
+    ai: ClassificationResult
+  ): ClassificationResult {
+    if (ai.kind === "ambiguous" && ai.confidence < 0.7) return deterministic;
+
+    if (deterministic.kind === "ambiguous" && ai.kind !== "ambiguous" && ai.confidence >= 0.5) {
+      return ai;
+    }
+
+    if (ai.kind !== deterministic.kind && deterministic.confidence >= 0.9 && ai.confidence < 0.8) {
+      return deterministic;
+    }
+
+    if (ai.confidence >= 0.55) return ai;
+    return deterministic;
+  }
+
+  private async safeTaskSummary(text: string, dueAt?: string | null): Promise<string> {
+    const slot = await this.safeSummary(text, "task", dueAt ?? null);
+    return normalizeTaskTitle(slot, text);
   }
 
   private async safeSummary(
