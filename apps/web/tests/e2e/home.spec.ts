@@ -1,6 +1,184 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page, type Route } from "@playwright/test";
+import type { Task } from "@new/shared";
+
+type ChatRequest = {
+  text?: string;
+  selectedChoice?: string;
+};
+
+type ChatResponse = {
+  assistantText: string;
+  summarySlot: string;
+  actionType: "saved" | "confirm" | "error";
+  quickChoices: string[];
+  affectedTaskIds: string[];
+};
+
+function buildTask(input: {
+  id: string;
+  title: string;
+  kind: "task" | "memo";
+  memoCategory: Task["memoCategory"];
+  dueState: Task["dueState"];
+  dueAt: string | null;
+}): Task {
+  const now = "2026-02-07T00:00:00.000Z";
+  return {
+    id: input.id,
+    installationId: "inst-1",
+    title: input.title,
+    kind: input.kind,
+    memoCategory: input.memoCategory,
+    dueState: input.dueState,
+    dueAt: input.dueAt,
+    defaultDueTimeApplied: false,
+    status: "active",
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+async function fulfillJson(route: Route, payload: unknown, status = 200): Promise<void> {
+  await route.fulfill({
+    status,
+    contentType: "application/json",
+    body: JSON.stringify(payload)
+  });
+}
+
+async function setupBaseApiMocks(page: Page, tasks: Task[]): Promise<void> {
+  await page.route("**/v1/installations/register", async (route) => {
+    await fulfillJson(route, {
+      installationId: "inst-1",
+      accessToken: "token-1",
+      timezone: "Asia/Tokyo"
+    });
+  });
+
+  await page.route("**/v1/tasks", async (route) => {
+    const req = route.request();
+    if (req.method() !== "GET") {
+      await fulfillJson(route, { message: "method not allowed" }, 405);
+      return;
+    }
+    await fulfillJson(route, { items: tasks });
+  });
+}
 
 test("home renders", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "自分専用秘書PWA" })).toBeVisible();
+});
+
+test("memo choice from ambiguous input asks memo category then saves selected category", async ({ page }) => {
+  const tasks: Task[] = [];
+
+  await setupBaseApiMocks(page, tasks);
+
+  await page.route("**/v1/chat/messages", async (route) => {
+    const body = route.request().postDataJSON() as ChatRequest;
+
+    let response: ChatResponse;
+    if (body.text === "転職準備") {
+      response = {
+        assistantText: "転職準備ですね。これはタスクにしますか？メモにしますか？",
+        summarySlot: "転職準備",
+        actionType: "confirm",
+        quickChoices: ["タスク", "メモ"],
+        affectedTaskIds: []
+      };
+    } else if (body.selectedChoice === "メモ") {
+      response = {
+        assistantText: "転職準備ですね。メモの分類を選んでください。",
+        summarySlot: "転職準備",
+        actionType: "confirm",
+        quickChoices: ["やりたいこと", "アイデア", "メモ（雑多）"],
+        affectedTaskIds: []
+      };
+    } else if (body.selectedChoice === "やりたいこと") {
+      tasks.splice(0, tasks.length, buildTask({
+        id: "task-1",
+        title: "転職準備",
+        kind: "memo",
+        memoCategory: "want",
+        dueState: "no_due",
+        dueAt: null
+      }));
+      response = {
+        assistantText: "転職準備ですね。やりたいこととして保存しました。",
+        summarySlot: "転職準備",
+        actionType: "saved",
+        quickChoices: [],
+        affectedTaskIds: ["task-1"]
+      };
+    } else {
+      response = {
+        assistantText: "処理できませんでした。",
+        summarySlot: "",
+        actionType: "error",
+        quickChoices: [],
+        affectedTaskIds: []
+      };
+    }
+
+    await fulfillJson(route, response);
+  });
+
+  await page.goto("/");
+
+  await page.getByPlaceholder("例: 明日9時にAさんへ連絡").fill("転職準備");
+  await page.getByRole("button", { name: "送信" }).click();
+
+  await expect(page.getByRole("button", { name: "メモ" })).toBeVisible();
+  await page.getByRole("button", { name: "メモ" }).click();
+
+  await expect(page.getByRole("button", { name: "やりたいこと" })).toBeVisible();
+  await page.getByRole("button", { name: "やりたいこと" }).click();
+
+  await expect(page.locator(".task-item .task-title")).toHaveText("転職準備");
+  await expect(page.locator(".task-item .badge.memo-cat")).toHaveText("やりたいこと");
+});
+
+test("task title is normalized when input contains due expression", async ({ page }) => {
+  const tasks: Task[] = [];
+
+  await setupBaseApiMocks(page, tasks);
+
+  await page.route("**/v1/chat/messages", async (route) => {
+    const body = route.request().postDataJSON() as ChatRequest;
+
+    if (body.text === "明日18時に洗濯") {
+      tasks.splice(0, tasks.length, buildTask({
+        id: "task-2",
+        title: "洗濯",
+        kind: "task",
+        memoCategory: null,
+        dueState: "scheduled",
+        dueAt: "2026-02-08T09:00:00.000Z"
+      }));
+      await fulfillJson(route, {
+        assistantText: "洗濯ですね。タスクに登録しました。",
+        summarySlot: "洗濯",
+        actionType: "saved",
+        quickChoices: [],
+        affectedTaskIds: ["task-2"]
+      });
+      return;
+    }
+
+    await fulfillJson(route, {
+      assistantText: "処理できませんでした。",
+      summarySlot: "",
+      actionType: "error",
+      quickChoices: [],
+      affectedTaskIds: []
+    });
+  });
+
+  await page.goto("/");
+
+  await page.getByPlaceholder("例: 明日9時にAさんへ連絡").fill("明日18時に洗濯");
+  await page.getByRole("button", { name: "送信" }).click();
+
+  await expect(page.locator(".task-item .task-title")).toHaveText("洗濯");
 });
