@@ -46,7 +46,8 @@ export const pendingTypeSchema = z.enum([
   "due_choice",
   "due_time_confirm",
   "task_target_confirm",
-  "task_or_memo_confirm"
+  "task_or_memo_confirm",
+  "memo_category_confirm"
 ]);
 export type PendingType = z.infer<typeof pendingTypeSchema>;
 

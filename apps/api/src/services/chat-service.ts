@@ -36,6 +36,7 @@ type ChatInput = {
 };
 
 const CONTEXT_TTL_MS = 30 * 60 * 1000;
+const QUICK_MEMO_CATEGORY_CHOICES = ["やりたいこと", "アイデア", "メモ（雑多）"] as const;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -54,6 +55,14 @@ function memoCategoryLabel(category: MemoCategory): string {
   if (category === "want") return "やりたいこと";
   if (category === "idea") return "アイデア";
   return "メモ（雑多）";
+}
+
+function parseMemoCategoryChoice(choice: string): MemoCategory | null {
+  const normalized = choice.trim();
+  if (normalized === "やりたいこと" || normalized.toLowerCase() === "want") return "want";
+  if (normalized === "アイデア" || normalized.toLowerCase() === "idea") return "idea";
+  if (normalized === "メモ（雑多）" || normalized === "メモ" || normalized.toLowerCase() === "misc") return "misc";
+  return null;
 }
 
 export class ChatService {
@@ -264,6 +273,8 @@ export class ChatService {
         return this.handlePendingDueTime(context, userInput, input);
       case "task_target_confirm":
         return this.handlePendingTaskTarget(context, userInput, input);
+      case "memo_category_confirm":
+        return this.handlePendingMemoCategory(context, userInput, input);
       default:
         await this.repo.clearConversationContext(input.installationId);
         return {
@@ -282,15 +293,37 @@ export class ChatService {
     input: ChatInput
   ): Promise<ChatMessageResponse> {
     const originalText = String(context.payload.originalText ?? userInput);
+    const summary = String(context.payload.summary ?? (await this.safeSummary(originalText, "memo")));
+
     if (userInput.includes("タスク")) {
       await this.repo.clearConversationContext(input.installationId);
       return this.handleTaskCreation(originalText, input.installationId, input.defaultDueTime);
     }
 
     if (userInput.includes("メモ")) {
+      const category = await this.resolveMemoCategoryForExplicitMemo(originalText);
+      if (category === "misc") {
+        await this.setContext({
+          installationId: input.installationId,
+          pendingType: "memo_category_confirm",
+          candidateTaskIds: [],
+          proposedDueAt: null,
+          proposedOffsetMinutes: null,
+          expiresAt: new Date(Date.now() + CONTEXT_TTL_MS).toISOString(),
+          payload: { originalText, summary },
+          updatedAt: nowIso()
+        });
+
+        return {
+          assistantText: `${summary}ですね。メモの分類を選んでください。`,
+          summarySlot: summary,
+          actionType: "confirm",
+          quickChoices: [...QUICK_MEMO_CATEGORY_CHOICES],
+          affectedTaskIds: []
+        };
+      }
+
       await this.repo.clearConversationContext(input.installationId);
-      const category = detectMemoCategory(originalText);
-      const summary = await this.safeSummary(originalText, "memo");
       const task = await this.createTaskRecord({
         installationId: input.installationId,
         title: summary,
@@ -311,11 +344,71 @@ export class ChatService {
 
     return {
       assistantText: "タスクかメモかを選んでください。（タスク / メモ）",
-      summarySlot: String(context.payload.summary ?? fallbackSummarySlot(originalText)),
+      summarySlot: summary,
       actionType: "confirm",
       quickChoices: ["タスク", "メモ"],
       affectedTaskIds: []
     };
+  }
+
+  private async handlePendingMemoCategory(
+    context: ConversationContext,
+    userInput: string,
+    input: ChatInput
+  ): Promise<ChatMessageResponse> {
+    const originalText = String(context.payload.originalText ?? "");
+    const summary = String(context.payload.summary ?? (await this.safeSummary(originalText, "memo")));
+    const category = parseMemoCategoryChoice(userInput);
+
+    if (!category) {
+      return {
+        assistantText: "メモの分類を選んでください。（やりたいこと / アイデア / メモ（雑多））",
+        summarySlot: summary,
+        actionType: "confirm",
+        quickChoices: [...QUICK_MEMO_CATEGORY_CHOICES],
+        affectedTaskIds: []
+      };
+    }
+
+    await this.repo.clearConversationContext(input.installationId);
+    const task = await this.createTaskRecord({
+      installationId: input.installationId,
+      title: summary,
+      kind: "memo",
+      memoCategory: category,
+      dueState: "no_due",
+      dueAt: null,
+      defaultDueTimeApplied: false
+    });
+
+    return {
+      assistantText: memoSavedMessage({ summary, detail: `${memoCategoryLabel(category)}として保存しました。` }),
+      summarySlot: summary,
+      actionType: "saved",
+      quickChoices: [],
+      affectedTaskIds: [task.id]
+    };
+  }
+
+  private async resolveMemoCategoryForExplicitMemo(text: string): Promise<MemoCategory> {
+    const deterministic = detectMemoCategory(text);
+    if (deterministic !== "misc") return deterministic;
+
+    try {
+      const ai = await this.classificationProvider(text, {
+        ruleKind: "memo",
+        ruleReason: "explicit_memo_choice",
+        ruleConfidence: 0.6
+      });
+
+      if (ai?.kind === "memo" && ai.memoCategory) {
+        return ai.memoCategory;
+      }
+    } catch {
+      // ignore and use manual category selection
+    }
+
+    return "misc";
   }
 
   private async handlePendingDueChoice(

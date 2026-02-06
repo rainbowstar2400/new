@@ -105,6 +105,57 @@ describe("chat api integration", () => {
     expect(response.json().quickChoices).toEqual(["タスク", "メモ"]);
   });
 
+  it("asks memo category after explicit memo choice from ambiguous input", async () => {
+    const repo = new MemoryRepository();
+    const app = await createServer({
+      repo,
+      startScheduler: false,
+      summaryProvider: async () => "転職準備"
+    });
+
+    const reg = await app.inject({ method: "POST", url: "/v1/installations/register", payload: {} });
+    const session = reg.json();
+    const headers = { authorization: `Bearer ${session.accessToken}` };
+
+    const first = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers,
+      payload: { text: "転職準備" }
+    });
+
+    expect(first.json().actionType).toBe("confirm");
+    expect(first.json().quickChoices).toEqual(["タスク", "メモ"]);
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers,
+      payload: { selectedChoice: "メモ" }
+    });
+
+    expect(second.json().actionType).toBe("confirm");
+    expect(second.json().quickChoices).toEqual(["やりたいこと", "アイデア", "メモ（雑多）"]);
+
+    const third = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers,
+      payload: { selectedChoice: "やりたいこと" }
+    });
+
+    expect(third.json().actionType).toBe("saved");
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/tasks",
+      headers
+    });
+
+    expect(list.json().items[0].kind).toBe("memo");
+    expect(list.json().items[0].memoCategory).toBe("want");
+  });
+
   it("interprets short chore text as task", async () => {
     const repo = new MemoryRepository();
     const app = await createServer({
