@@ -36,6 +36,29 @@ h1 {
   margin: 2px 0 0;
 }
 
+.focus-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #1f6f7840;
+  background: #e9f6f8;
+}
+
+.focus-banner p {
+  margin: 0;
+  color: #1b5961;
+}
+
+.focus-banner button {
+  background: #fff;
+  color: #1f6f78;
+  border: 1px solid #1f6f7850;
+}
+
 .layout {
   display: grid;
   grid-template-columns: 1.6fr 1fr;
@@ -163,6 +186,12 @@ button:disabled {
   background: #fff;
 }
 
+.task-item.focused {
+  border-color: #1f6f78;
+  box-shadow: 0 0 0 2px #1f6f7826;
+  background: #f4fbfc;
+}
+
 .task-title {
   margin: 0 0 6px;
   font-weight: 700;
@@ -215,5 +244,10 @@ button:disabled {
 @media (max-width: 940px) {
   .layout {
     grid-template-columns: 1fr;
+  }
+
+  .focus-banner {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

@@ -17,6 +17,15 @@ const WEEKDAY_MAP: Record<string, number> = {
 
 type ParsedTime = { hours: number; minutes: number; provided: boolean };
 
+function normalizeForDateParsing(text: string): string {
+  return text
+    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace(/：/g, ":")
+    .replace(/／/g, "/")
+    .replace(/－/g, "-")
+    .replace(/　/g, " ");
+}
+
 function adjustByMeridiem(meridiem: string | undefined, hour: number): number {
   if (!meridiem) return hour;
   if (meridiem === "午後" && hour < 12) return hour + 12;
@@ -135,10 +144,12 @@ export function formatDateLabel(iso: string): string {
 
 export function parseDueFromText(text: string, options: ParseOptions = {}): ParsedDue | null {
   const now = options.now ?? new Date();
-  const date = parseDate(text, now);
+  const normalizedText = normalizeForDateParsing(text);
+
+  const date = parseDate(normalizedText, now);
   if (!date) return null;
 
-  const detectedTime = parseTime(text);
+  const detectedTime = parseTime(normalizedText);
   const fallback = parseDefaultTime(options.defaultDueTime);
   const hours = detectedTime.provided ? detectedTime.hours : fallback.hours;
   const minutes = detectedTime.provided ? detectedTime.minutes : fallback.minutes;

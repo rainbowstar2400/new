@@ -29,6 +29,11 @@ describe("classifyInput", () => {
     expect(result.kind).toBe("task");
   });
 
+  it("classifies full-width datetime cue as task", () => {
+    const result = classifyInput("１８時に出発");
+    expect(result.kind).toBe("task");
+  });
+
   it("classifies bare desire sentence as memo", () => {
     const result = classifyInput("来月は京都に行きたい");
     expect(result.kind).toBe("memo");

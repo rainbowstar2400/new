@@ -18,6 +18,7 @@ type ChatMessage = {
 
 const SESSION_KEY = "secretary_session";
 const DEFAULT_DUE_KEY = "default_due_time";
+const TASK_ID_QUERY_KEY = "taskId";
 
 function newMessageId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -39,6 +40,20 @@ function saveStoredSession(session: DeviceSession): void {
 
 function loadDefaultDueTime(): string {
   return localStorage.getItem(DEFAULT_DUE_KEY) ?? "09:00";
+}
+
+function readTaskIdFromQuery(): string | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const taskId = params.get(TASK_ID_QUERY_KEY)?.trim();
+  return taskId ? taskId : null;
+}
+
+function clearTaskIdQuery(): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete(TASK_ID_QUERY_KEY);
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
 function base64ToUint8Array(base64: string): Uint8Array {
@@ -66,6 +81,7 @@ export default function App() {
   const [defaultDueTime, setDefaultDueTime] = useState(loadDefaultDueTime());
   const [busy, setBusy] = useState(false);
   const [statusText, setStatusText] = useState("起動中...");
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(readTaskIdFromQuery());
 
   useEffect(() => {
     void (async () => {
@@ -81,14 +97,42 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const onPopState = () => setFocusedTaskId(readTaskIdFromQuery());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
     if (!session) return;
     void refreshTasks(session);
   }, [session]);
 
-  const sortedTasks = useMemo(
-    () => [...tasks].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    [tasks]
-  );
+  useEffect(() => {
+    if (!focusedTaskId || tasks.length === 0) return;
+
+    const target = tasks.find((task) => task.id === focusedTaskId);
+    if (!target) {
+      setStatusText("通知から開いたタスクが見つかりませんでした");
+      return;
+    }
+
+    setStatusText(`通知から「${target.title}」を表示中`);
+    requestAnimationFrame(() => {
+      const node = document.querySelector<HTMLElement>(`[data-task-id="${focusedTaskId}"]`);
+      node?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [focusedTaskId, tasks]);
+
+  const sortedTasks = useMemo(() => {
+    const ordered = [...tasks].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    if (!focusedTaskId) return ordered;
+
+    return ordered.sort((a, b) => {
+      if (a.id === focusedTaskId && b.id !== focusedTaskId) return -1;
+      if (b.id === focusedTaskId && a.id !== focusedTaskId) return 1;
+      return 0;
+    });
+  }, [tasks, focusedTaskId]);
 
   async function refreshTasks(currentSession: DeviceSession): Promise<void> {
     const items = await fetchTasks(currentSession);
@@ -120,7 +164,7 @@ export default function App() {
       ]);
       setQuickChoices(response.quickChoices);
       await refreshTasks(session);
-    } catch (error) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
@@ -183,6 +227,12 @@ export default function App() {
     await refreshTasks(session);
   }
 
+  function onClearFocusTask(): void {
+    setFocusedTaskId(null);
+    clearTaskIdQuery();
+    setStatusText("オンラインMVPモードで接続済み");
+  }
+
   function saveDefaultDueTime(next: string): void {
     setDefaultDueTime(next);
     localStorage.setItem(DEFAULT_DUE_KEY, next);
@@ -197,6 +247,13 @@ export default function App() {
         </div>
         <p>{statusText}</p>
       </header>
+
+      {focusedTaskId ? (
+        <section className="focus-banner">
+          <p>通知から開いたタスクを上部表示しています。</p>
+          <button type="button" onClick={onClearFocusTask}>表示を解除</button>
+        </section>
+      ) : null}
 
       <main className="layout">
         <section className="panel chat-panel">
@@ -249,7 +306,11 @@ export default function App() {
           <h2>タスク・メモ一覧</h2>
           <ul className="task-list">
             {sortedTasks.map((task) => (
-              <li key={task.id} className="task-item">
+              <li
+                key={task.id}
+                data-task-id={task.id}
+                className={`task-item ${task.id === focusedTaskId ? "focused" : ""}`}
+              >
                 <p className="task-title">{task.title}</p>
                 <div className="meta-row">
                   <span className={`badge ${task.kind}`}>{taskKindLabel(task)}</span>
@@ -267,5 +328,3 @@ export default function App() {
     </div>
   );
 }
-
-

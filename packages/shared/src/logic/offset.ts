@@ -1,7 +1,14 @@
 import type { ParsedOffset } from "../types";
 
+function normalizeOffsetText(text: string): string {
+  return text
+    .trim()
+    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace(/　/g, " ");
+}
+
 export function parseOffsetText(text: string): ParsedOffset | null {
-  const normalized = text.trim();
+  const normalized = normalizeOffsetText(text);
 
   const hourBefore = normalized.match(/(\d+)\s*時間前/);
   if (hourBefore) {

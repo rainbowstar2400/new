@@ -58,6 +58,14 @@ function squeezeText(text: string): string {
   return text.replace(/\s+/g, "");
 }
 
+function normalizeForDateCue(text: string): string {
+  return text
+    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace(/：/g, ":")
+    .replace(/／/g, "/")
+    .replace(/－/g, "-");
+}
+
 function hasAny(text: string, hints: readonly string[]): boolean {
   return hints.some((hint) => text.includes(hint));
 }
@@ -83,9 +91,10 @@ function hasWantExpression(text: string): boolean {
 }
 
 function hasDateTimeCue(text: string): boolean {
+  const normalized = normalizeForDateCue(text);
   return (
-    /(\d{1,2}\s*[:：]\s*\d{1,2}|\d{1,2}\s*時|\d{4}[-\/]\d{1,2}[-\/]\d{1,2}|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日)/.test(text) ||
-    /(明日|明後日|今日|来週|次の\s*[月火水木金土日]曜)/.test(text)
+    /(\d{1,2}\s*[:：]\s*\d{1,2}|\d{1,2}\s*時|\d{4}[-\/]\d{1,2}[-\/]\d{1,2}|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日)/.test(normalized) ||
+    /(明日|明後日|今日|来週|次の\s*[月火水木金土日]曜)/.test(normalized)
   );
 }
 

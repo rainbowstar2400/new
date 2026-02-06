@@ -7,6 +7,11 @@ describe("offset", () => {
     expect(parsed?.offsetMinutes).toBe(60);
   });
 
+  it("parses full-width hour-before expression", () => {
+    const parsed = parseOffsetText("１時間前にリマインドして");
+    expect(parsed?.offsetMinutes).toBe(60);
+  });
+
   it("applies offset", () => {
     const notifyAt = applyOffset("2026-02-07T10:00:00.000Z", 60);
     expect(notifyAt).toBe("2026-02-07T09:00:00.000Z");

@@ -16,6 +16,20 @@ describe("parseDueFromText", () => {
     expect(parsed?.dueAt).toBe(expected.toISOString());
   });
 
+  it("parses full-width hour text", () => {
+    const parsed = parseDueFromText("明日１５時に洗濯", { now });
+    expect(parsed?.kind).toBe("datetime");
+    expect(parsed?.timeProvided).toBe(true);
+
+    const due = new Date(parsed!.dueAt);
+    const expected = new Date(now);
+    expected.setDate(expected.getDate() + 1);
+
+    expect(due.getDate()).toBe(expected.getDate());
+    expect(due.getHours()).toBe(15);
+    expect(due.getMinutes()).toBe(0);
+  });
+
   it("parses date only with default time", () => {
     const parsed = parseDueFromText("来週金曜まで", { now, defaultDueTime: "10:30" });
     expect(parsed?.kind).toBe("date_only");
