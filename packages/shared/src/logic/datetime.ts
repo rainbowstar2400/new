@@ -114,7 +114,7 @@ export function parseDueFromText(text: string, options: ParseOptions = {}): Pars
   const minutes = detectedTime.provided ? detectedTime.minutes : fallback.minutes;
 
   const due = new Date(date);
-  due.setHours(hours, minutes, 0, 0);
+  due.setUTCHours(hours, minutes, 0, 0);
 
   return {
     kind: detectedTime.provided ? "datetime" : "date_only",
@@ -127,3 +127,4 @@ export function parseDueFromText(text: string, options: ParseOptions = {}): Pars
 export function isPast(iso: string, now: Date = new Date()): boolean {
   return new Date(iso).getTime() < now.getTime();
 }
+

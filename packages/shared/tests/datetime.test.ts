@@ -14,6 +14,8 @@ describe("parseDueFromText", () => {
     const parsed = parseDueFromText("来週金曜まで", { now, defaultDueTime: "10:30" });
     expect(parsed?.kind).toBe("date_only");
     expect(parsed?.timeProvided).toBe(false);
-    expect(parsed?.dueAt).toContain("T10:30:00.000Z");
+    const due = new Date(parsed!.dueAt);
+    expect(due.getUTCHours()).toBe(10);
+    expect(due.getUTCMinutes()).toBe(30);
   });
 });
