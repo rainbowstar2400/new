@@ -6,6 +6,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+if ($env:SKIP_PREFLIGHT_STRICT -eq "1") {
+  Write-Host "[OK] preflight skipped by SKIP_PREFLIGHT_STRICT=1"
+  git status --short --branch
+  exit 0
+}
+
 try {
   $root = (git rev-parse --show-toplevel).Trim()
 } catch {

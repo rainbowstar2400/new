@@ -1,33 +1,53 @@
 # new
 
-企画中プロダクト「自分専用秘書PWA」の仕様・実装計画を管理するリポジトリです。
+オンラインMVP（v0.2）として、会話入力ベースの秘書アプリを実装するモノレポです。
 
-## 現在の状態
+## リポジトリ構成
 
-- ドキュメント先行で要件を整理している段階です。
-- 実装コードは未着手または最小構成で、まず `P0` 機能の実装計画を固めます。
+- `apps/web`: Vite + React + TypeScript PWA
+- `apps/api`: Fastify + PostgreSQL API
+- `packages/shared`: 共通型・分類/日時/要約ロジック
+- `infra`: DBマイグレーション、運用メモ
+- `Documents`: 仕様書
+- `Issues`: Issue下書きと`gh`コマンド
 
-## ディレクトリ構成
+## 開発フロー（安全運用）
 
-- `Documents/`
-  - `ProductBrief_v0.1.md`
-  - `UseCases_v0.1.md`
-  - `PRD_v0.1.md`
-  - `Backlog_v0.1.md`
-- `Issues/`
-  - `GitHubIssues_v0.1.md`
-  - `GitHubIssueCommands_v0.1.md`
+1. `pnpm preflight` を実行して対象リポジトリを検証
+2. `pnpm dev` で Web/API を並列起動
+3. `pnpm test` で単体・結合テストを実行
 
-## 参照順（推奨）
+## 主なコマンド
 
-1. `Documents/ProductBrief_v0.1.md`
-2. `Documents/UseCases_v0.1.md`
-3. `Documents/PRD_v0.1.md`
-4. `Documents/Backlog_v0.1.md`
-5. `Issues/GitHubIssues_v0.1.md`
+```bash
+pnpm preflight
+pnpm dev
+pnpm dev:api
+pnpm dev:web
+pnpm test
+pnpm build
+```
 
-## 作業方針
+## 環境変数
 
-- `Backlog_v0.1.md` の `P0` 項目から順に実装する。
-- 仕様変更時は、関連するドキュメントを同時更新する。
-- 作業開始前に、対象リポジトリが `new` であることを必ず確認する。
+`.env.example` をコピーして `.env` を作成してください。
+
+- API: `DATABASE_URL`, `OPENAI_API_KEY`, `WEB_PUSH_*`
+- Web: `VITE_API_BASE_URL`, `VITE_WEB_PUSH_PUBLIC_KEY`
+
+## 仕様ドキュメント
+
+- `Documents/ProductBrief_v0.2.md`
+- `Documents/UseCases_v0.2.md`
+- `Documents/PRD_v0.2.md`
+- `Documents/Backlog_v0.2.md`
+
+## 実装対象API
+
+- `POST /v1/installations/register`
+- `POST /v1/chat/messages`
+- `POST /v1/push/subscribe`
+- `POST /v1/tasks/:id/reclassify`
+- `POST /v1/reminders/:id/adjust-offset`
+- `GET /v1/tasks`
+- `GET /v1/reminders/upcoming`

@@ -1,0 +1,219 @@
+:root {
+  color-scheme: light;
+  font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  background: linear-gradient(180deg, #eef4f5 0%, #dce9ea 100%);
+  color: #16353a;
+}
+
+.app-shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1f6f78;
+}
+
+h1 {
+  margin: 2px 0 0;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 12px;
+}
+
+.panel {
+  border-radius: 14px;
+  background: #ffffffde;
+  border: 1px solid #1f6f7822;
+  padding: 14px;
+}
+
+.chat-panel {
+  display: grid;
+  grid-template-rows: auto auto auto auto;
+  gap: 10px;
+}
+
+.muted {
+  color: #526a70;
+  margin: 0;
+}
+
+.messages {
+  min-height: 320px;
+  max-height: 54vh;
+  overflow: auto;
+  border: 1px solid #1f6f7822;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f9fcfc;
+}
+
+.message {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  max-width: 92%;
+  white-space: pre-wrap;
+}
+
+.message.user {
+  margin-left: auto;
+  background: #1f6f78;
+  color: #fff;
+}
+
+.message.assistant {
+  background: #eef6f7;
+  border: 1px solid #1f6f7820;
+}
+
+.chat-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+textarea {
+  border-radius: 8px;
+  border: 1px solid #1f6f7822;
+  padding: 8px;
+  resize: vertical;
+  min-height: 62px;
+}
+
+button,
+input[type="time"] {
+  border: 1px solid #1f6f7830;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: #1f6f78;
+  color: #fff;
+  border: none;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.choices {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.choices button {
+  background: #fff;
+  color: #1f6f78;
+  border: 1px solid #1f6f7850;
+}
+
+.side-panel {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.label {
+  display: grid;
+  gap: 4px;
+  color: #526a70;
+}
+
+.task-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.task-item {
+  border: 1px solid #1f6f7822;
+  border-radius: 10px;
+  padding: 8px;
+  background: #fff;
+}
+
+.task-title {
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.badge.task {
+  background: #1f6f7818;
+  color: #1b5961;
+}
+
+.badge.memo {
+  background: #6a7a5a20;
+  color: #556545;
+}
+
+.badge.memo-cat {
+  background: #8d6f1f1f;
+  color: #705813;
+}
+
+.badge.due.pending_due {
+  background: #d6452f20;
+  color: #b02f1e;
+}
+
+.badge.due.scheduled {
+  background: #1f6f7818;
+  color: #1b5961;
+}
+
+.badge.due.no_due {
+  background: #66657d18;
+  color: #53526a;
+}
+
+@media (max-width: 940px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
