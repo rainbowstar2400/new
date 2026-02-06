@@ -13,6 +13,17 @@ describe("classifyInput", () => {
     expect(result.memoCategory).toBe("want");
   });
 
+  it("classifies hiragana desire sentence as want", () => {
+    const result = classifyInput("京都にいきたい");
+    expect(result.kind).toBe("memo");
+    expect(result.memoCategory).toBe("want");
+  });
+
+  it("keeps epistemic mitai as non-want", () => {
+    const category = detectMemoCategory("この景色は映画みたいです");
+    expect(category).toBe("misc");
+  });
+
   it("classifies short task-like noun", () => {
     const result = classifyInput("洗濯");
     expect(result.kind).toBe("task");

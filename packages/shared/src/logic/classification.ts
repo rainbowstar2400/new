@@ -54,13 +54,32 @@ function normalizeText(text: string): string {
   return text.trim().replace(/\s+/g, " ");
 }
 
+function squeezeText(text: string): string {
+  return text.replace(/\s+/g, "");
+}
+
 function hasAny(text: string, hints: readonly string[]): boolean {
   return hints.some((hint) => text.includes(hint));
 }
 
 function hasWantExpression(text: string): boolean {
-  if (hasAny(text, WANT_HINTS)) return true;
-  return /(行きたい|読みたい|書きたい|見たい|作りたい|食べたい|試したい|学びたい)/.test(text);
+  const normalized = squeezeText(text);
+  if (hasAny(normalized, WANT_HINTS)) return true;
+
+  if (/(してみたい|やってみたい|行きたい|いきたい|会いたい|あいたい|見たい|読みたい|よみたい|書きたい|かきたい|買いたい|かいたい|作りたい|つくりたい|食べたい|たべたい|続けたい|つづけたい|始めたい|はじめたい|終わらせたい|おわらせたい|試したい|ためしたい|学びたい|まなびたい)/.test(normalized)) {
+    return true;
+  }
+
+  if (/みたい(?:だ|です|な|に)/.test(normalized)) {
+    return false;
+  }
+
+  if (/(?:を|に|へ|が|で|と|から|まで)[^。！？!?]{0,20}たい(?:です|な|と思う)?/.test(normalized)) {
+    return true;
+  }
+
+  if (normalized.length <= 4) return false;
+  return /[ぁ-んァ-ヶ一-龯ー]{2,20}たい(?:です|な)?$/.test(normalized);
 }
 
 function hasDateTimeCue(text: string): boolean {
