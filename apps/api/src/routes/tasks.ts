@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { z } from "zod";
 import { applyOffset } from "@new/shared";
 import type { FastifyInstance } from "fastify";

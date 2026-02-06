@@ -37,7 +37,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
 
   const authPreHandler = buildAuthPreHandler(repo);
   app.addHook("preHandler", async (request, reply) => {
-    if (request.routerPath === "/v1/installations/register") return;
+    if (request.url.startsWith("/v1/installations/register")) return;
     if (!request.url.startsWith("/v1/")) return;
     await authPreHandler(request, reply);
   });
