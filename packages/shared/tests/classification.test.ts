@@ -13,7 +13,18 @@ describe("classifyInput", () => {
     expect(result.memoCategory).toBe("want");
   });
 
-  it("classifies ambiguous short text", () => {
+  it("classifies short task-like noun", () => {
+    const result = classifyInput("洗濯");
+    expect(result.kind).toBe("task");
+  });
+
+  it("classifies bare desire sentence as memo", () => {
+    const result = classifyInput("来月は京都に行きたい");
+    expect(result.kind).toBe("memo");
+    expect(result.memoCategory).toBe("want");
+  });
+
+  it("keeps truly short unclear text ambiguous", () => {
     const result = classifyInput("転職準備");
     expect(result.kind).toBe("ambiguous");
   });

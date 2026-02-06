@@ -15,20 +15,41 @@ const WEEKDAY_MAP: Record<string, number> = {
   "土": 6
 };
 
-function parseTime(text: string): { hours: number; minutes: number; provided: boolean } {
-  const hm = text.match(/(\d{1,2})\s*[:：]\s*(\d{1,2})/);
+type ParsedTime = { hours: number; minutes: number; provided: boolean };
+
+function adjustByMeridiem(meridiem: string | undefined, hour: number): number {
+  if (!meridiem) return hour;
+  if (meridiem === "午後" && hour < 12) return hour + 12;
+  if (meridiem === "午前" && hour === 12) return 0;
+  return hour;
+}
+
+function parseTime(text: string): ParsedTime {
+  const hm = text.match(/(午前|午後)?\s*(\d{1,2})\s*[:：]\s*(\d{1,2})/);
   if (hm) {
+    const hour = adjustByMeridiem(hm[1], Number(hm[2]));
     return {
-      hours: Math.min(23, Number(hm[1])),
-      minutes: Math.min(59, Number(hm[2])),
+      hours: Math.min(23, hour),
+      minutes: Math.min(59, Number(hm[3])),
       provided: true
     };
   }
 
-  const hOnly = text.match(/(\d{1,2})\s*時/);
-  if (hOnly) {
+  const hWithMinute = text.match(/(午前|午後)?\s*(\d{1,2})\s*時\s*(\d{1,2})\s*分/);
+  if (hWithMinute) {
+    const hour = adjustByMeridiem(hWithMinute[1], Number(hWithMinute[2]));
     return {
-      hours: Math.min(23, Number(hOnly[1])),
+      hours: Math.min(23, hour),
+      minutes: Math.min(59, Number(hWithMinute[3])),
+      provided: true
+    };
+  }
+
+  const hOnly = text.match(/(午前|午後)?\s*(\d{1,2})\s*時/);
+  if (hOnly) {
+    const hour = adjustByMeridiem(hOnly[1], Number(hOnly[2]));
+    return {
+      hours: Math.min(23, hour),
       minutes: 0,
       provided: true
     };
@@ -72,6 +93,20 @@ function parseDate(text: string, now: Date): Date | null {
     return atDate(now, delta);
   }
 
+  const ymd = text.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+  if (ymd) {
+    return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
+  }
+
+  const jpMd = text.match(/(\d{1,2})月\s*(\d{1,2})日/);
+  if (jpMd) {
+    const candidate = new Date(now.getFullYear(), Number(jpMd[1]) - 1, Number(jpMd[2]));
+    if (candidate.getTime() < now.getTime()) {
+      candidate.setFullYear(candidate.getFullYear() + 1);
+    }
+    return candidate;
+  }
+
   const md = text.match(/(\d{1,2})\/(\d{1,2})/);
   if (md) {
     const candidate = new Date(now.getFullYear(), Number(md[1]) - 1, Number(md[2]));
@@ -81,12 +116,7 @@ function parseDate(text: string, now: Date): Date | null {
     return candidate;
   }
 
-  const ymd = text.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
-  if (ymd) {
-    return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
-  }
-
-  if (/\d{1,2}\s*時/.test(text) || /\d{1,2}\s*[:：]\s*\d{1,2}/.test(text)) {
+  if (/(\d{1,2}\s*時|\d{1,2}\s*[:：]\s*\d{1,2}|正午)/.test(text)) {
     return atDate(now, 0);
   }
 
@@ -114,7 +144,7 @@ export function parseDueFromText(text: string, options: ParseOptions = {}): Pars
   const minutes = detectedTime.provided ? detectedTime.minutes : fallback.minutes;
 
   const due = new Date(date);
-  due.setUTCHours(hours, minutes, 0, 0);
+  due.setHours(hours, minutes, 0, 0);
 
   return {
     kind: detectedTime.provided ? "datetime" : "date_only",
@@ -127,4 +157,3 @@ export function parseDueFromText(text: string, options: ParseOptions = {}): Pars
 export function isPast(iso: string, now: Date = new Date()): boolean {
   return new Date(iso).getTime() < now.getTime();
 }
-

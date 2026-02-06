@@ -83,7 +83,7 @@ describe("chat api integration", () => {
     expect(list.json().items[0].dueState).toBe("scheduled");
   });
 
-  it("returns task/memo confirmation for ambiguous input (UC-13)", async () => {
+  it("keeps short unclear input as confirmation (UC-13)", async () => {
     const repo = new MemoryRepository();
     const app = await createServer({
       repo,
@@ -103,6 +103,58 @@ describe("chat api integration", () => {
 
     expect(response.json().actionType).toBe("confirm");
     expect(response.json().quickChoices).toEqual(["タスク", "メモ"]);
+  });
+
+  it("interprets short chore text as task", async () => {
+    const repo = new MemoryRepository();
+    const app = await createServer({
+      repo,
+      startScheduler: false,
+      summaryProvider: async () => "洗濯"
+    });
+
+    const reg = await app.inject({ method: "POST", url: "/v1/installations/register", payload: {} });
+    const session = reg.json();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers: { authorization: `Bearer ${session.accessToken}` },
+      payload: { text: "洗濯" }
+    });
+
+    expect(response.json().actionType).toBe("confirm");
+    expect(response.json().quickChoices).toContain("設定する");
+  });
+
+  it("interprets desire sentence as memo", async () => {
+    const repo = new MemoryRepository();
+    const app = await createServer({
+      repo,
+      startScheduler: false,
+      summaryProvider: async () => "京都旅行に行きたい"
+    });
+
+    const reg = await app.inject({ method: "POST", url: "/v1/installations/register", payload: {} });
+    const session = reg.json();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers: { authorization: `Bearer ${session.accessToken}` },
+      payload: { text: "京都旅行に行きたい" }
+    });
+
+    expect(response.json().actionType).toBe("saved");
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/tasks",
+      headers: { authorization: `Bearer ${session.accessToken}` }
+    });
+
+    expect(list.json().items[0].kind).toBe("memo");
+    expect(list.json().items[0].memoCategory).toBe("want");
   });
 
   it("asks target confirmation when multiple tasks exist (UC-17)", async () => {
