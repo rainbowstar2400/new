@@ -1,0 +1,16 @@
+{
+  "name": "new-online-mvp",
+  "private": true,
+  "version": "0.2.0",
+  "packageManager": "pnpm@9.12.3",
+  "scripts": {
+    "preflight": "pwsh -NoProfile -File scripts/preflight-check.ps1",
+    "dev": "pnpm preflight && pnpm --parallel --filter @new/api --filter @new/web dev",
+    "dev:api": "pnpm preflight && pnpm --filter @new/api dev",
+    "dev:web": "pnpm preflight && pnpm --filter @new/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "format": "pnpm -r format"
+  }
+}
