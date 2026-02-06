@@ -70,14 +70,40 @@ export const deviceSessionSchema = z.object({
 });
 export type DeviceSession = z.infer<typeof deviceSessionSchema>;
 
+export const inputModeSchema = z.enum(["free_text", "choice_only", "choice_then_text_on_negative"]);
+export type InputMode = z.infer<typeof inputModeSchema>;
+
+export const confirmationTypeSchema = z.enum([
+  "task_or_memo",
+  "memo_category",
+  "due_choice",
+  "due_time_confirm",
+  "task_target_confirm"
+]);
+export type ConfirmationType = z.infer<typeof confirmationTypeSchema>;
+
 export const chatMessageResponseSchema = z.object({
   assistantText: z.string(),
   summarySlot: z.string(),
   actionType: z.enum(["saved", "confirm", "error"]),
   quickChoices: z.array(z.string()),
-  affectedTaskIds: z.array(z.string())
+  affectedTaskIds: z.array(z.string()),
+  inputMode: inputModeSchema.optional(),
+  confirmationType: confirmationTypeSchema.nullable().optional(),
+  negativeChoice: z.string().nullable().optional()
 });
 export type ChatMessageResponse = z.infer<typeof chatMessageResponseSchema>;
+
+export const dueParseStateSchema = z.enum(["resolved", "needs_confirmation", "unparsable"]);
+export type DueParseState = z.infer<typeof dueParseStateSchema>;
+
+export const dueParseCandidateSchema = z.object({
+  state: dueParseStateSchema,
+  dueAt: z.string().datetime().nullable(),
+  timeProvided: z.boolean().nullable().optional(),
+  reason: z.string().min(1).max(120).optional()
+});
+export type DueParseCandidate = z.infer<typeof dueParseCandidateSchema>;
 
 export type ClassificationResult = {
   kind: "task" | "memo" | "ambiguous";

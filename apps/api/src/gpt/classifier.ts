@@ -28,6 +28,7 @@ function buildPrompt(inputText: string, facts: ClassificationFacts): string {
     "task / ambiguous の場合 memoCategory は null。",
     "不明なら ambiguous を選ぶ。",
     "ただし願望・希望（〜たい、〜してみたい等）は memo(want) を優先。",
+    "日時・期限語と実行行為が含まれる場合は task を優先。",
     "出力はJSONのみ。",
     `ruleKind=${facts.ruleKind}`,
     `ruleReason=${facts.ruleReason}`,

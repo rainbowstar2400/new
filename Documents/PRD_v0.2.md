@@ -54,6 +54,7 @@
 | FR-19 | 匿名デバイスIDを払い出し、インストール単位でデータ分離すること |
 | FR-20 | Push購読情報を保存し、有効な購読先へ配信できること |
 | FR-21 | 監査ログを最小限（入力/応答/時刻）で保持できること |
+| FR-22 | `/v1/chat/messages` は入力制御メタ（`inputMode`/`confirmationType`/`negativeChoice`）を返せること |
 
 ## 5. データ要件
 
@@ -93,11 +94,30 @@
 - GET `/v1/tasks`
 - GET `/v1/reminders/upcoming`
 
+### 6.1 ChatMessageResponse（追記）
+
+- `assistantText: string`
+- `summarySlot: string`
+- `actionType: "saved" | "confirm" | "error"`
+- `quickChoices: string[]`
+- `affectedTaskIds: string[]`
+- `inputMode?: "free_text" | "choice_only" | "choice_then_text_on_negative"`
+- `confirmationType?: "task_or_memo" | "memo_category" | "due_choice" | "due_time_confirm" | "task_target_confirm" | null`
+- `negativeChoice?: string | null`
+
 ### 認可
 
 - `register` 以外は `accessToken` によるインストール単位認可
 
-## 7. 非機能要件（NFR）
+## 7. 日時解釈ポリシー（P1改訂）
+
+- `OPENAI_DUE_PARSE_MODE` で `ai-first / rule-first / rule-only` を切り替える
+- 既定は `ai-first`
+- `ai-first` では AIが `resolved` 以外を返した場合、自動保存せず確認質問へ戻す
+- AI結果は厳格検証（ISO妥当性、必須項目、過去日時）を通過した場合のみ採用する
+- 検証失敗は `needs_confirmation` と同等に扱う
+
+## 8. 非機能要件（NFR）
 
 - 性能: 入力開始から保存完了5秒以内を80%以上で達成
 - 品質: タスク/メモ修正率20%以下、メモ内25%以下
@@ -105,7 +125,7 @@
 - 可用性: 主要機能はネットワーク一時不安定時にも再試行可能であること
 - プライバシー: 目的限定・最小送信を遵守すること
 
-## 8. KPI
+## 9. KPI
 
 - 5秒以内保存率 80%以上
 - タスク/メモ修正率 20%以下
@@ -113,7 +133,7 @@
 - リマインド調整成功率 95%以上
 - 通知後10分以内確認率 70%以上
 
-## 9. 主要受け入れ基準
+## 10. 主要受け入れ基準
 
 - `UC-02`: 期日未指定タスクで3択が表示される
 - `UC-08`: 日付のみ入力で `○/✕` が表示される
@@ -122,11 +142,19 @@
 - `UC-17`: 対象曖昧時に `対象タスクは〇〇で良いですか？` を返す
 - `UC-19`: ユーザー操作起点でPush購読保存が成功する
 - `UC-20`: GPT要約失敗時にフォールバック応答が返る
+- `UC-P1-01`: `choice_only` では自由入力不可
+- `UC-P1-02`: `choice_then_text_on_negative` では `✕` 後のみ自由入力可能
+- `UC-P1-03`: AI日時解釈の検証失敗時に確認フローへ戻る
 
-## 10. リリース条件
+## 11. v0.1 回帰チェック観点
+
+- `明日18時に洗濯` はタイトル `洗濯` で保存される
+- `〜たい` 系入力は `memo(want)` を維持する
+- `転職準備` は即保存せずタスク/メモ確認を返す
+
+## 12. リリース条件
 
 - `Backlog_v0.2.md` のP0が完了
 - 主要単体/結合/E2Eテストが緑化
 - Push購読と通知導線が実機で動作
 - ドキュメント (`Documents/*_v0.2.md`) と Issue定義 (`Issues/*_v0.2.md`) が同期している
-

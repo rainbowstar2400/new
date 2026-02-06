@@ -12,6 +12,9 @@ type ChatResponse = {
   actionType: "saved" | "confirm" | "error";
   quickChoices: string[];
   affectedTaskIds: string[];
+  inputMode?: "free_text" | "choice_only" | "choice_then_text_on_negative";
+  confirmationType?: "task_or_memo" | "memo_category" | "due_choice" | "due_time_confirm" | "task_target_confirm" | null;
+  negativeChoice?: string | null;
 };
 
 function buildTask(input: {
@@ -85,7 +88,10 @@ test("memo choice from ambiguous input asks memo category then saves selected ca
         summarySlot: "転職準備",
         actionType: "confirm",
         quickChoices: ["タスク", "メモ"],
-        affectedTaskIds: []
+        affectedTaskIds: [],
+        inputMode: "choice_only",
+        confirmationType: "task_or_memo",
+        negativeChoice: null
       };
     } else if (body.selectedChoice === "メモ") {
       response = {
@@ -93,7 +99,10 @@ test("memo choice from ambiguous input asks memo category then saves selected ca
         summarySlot: "転職準備",
         actionType: "confirm",
         quickChoices: ["やりたいこと", "アイデア", "メモ（雑多）"],
-        affectedTaskIds: []
+        affectedTaskIds: [],
+        inputMode: "choice_only",
+        confirmationType: "memo_category",
+        negativeChoice: null
       };
     } else if (body.selectedChoice === "やりたいこと") {
       tasks.splice(0, tasks.length, buildTask({
@@ -109,7 +118,10 @@ test("memo choice from ambiguous input asks memo category then saves selected ca
         summarySlot: "転職準備",
         actionType: "saved",
         quickChoices: [],
-        affectedTaskIds: ["task-1"]
+        affectedTaskIds: ["task-1"],
+        inputMode: "free_text",
+        confirmationType: null,
+        negativeChoice: null
       };
     } else {
       response = {
@@ -117,7 +129,10 @@ test("memo choice from ambiguous input asks memo category then saves selected ca
         summarySlot: "",
         actionType: "error",
         quickChoices: [],
-        affectedTaskIds: []
+        affectedTaskIds: [],
+        inputMode: "free_text",
+        confirmationType: null,
+        negativeChoice: null
       };
     }
 
@@ -129,7 +144,9 @@ test("memo choice from ambiguous input asks memo category then saves selected ca
   await page.getByPlaceholder("例: 明日9時にAさんへ連絡").fill("転職準備");
   await page.getByRole("button", { name: "送信" }).click();
 
+  const textarea = page.getByPlaceholder("例: 明日9時にAさんへ連絡");
   await expect(page.getByRole("button", { name: "メモ" })).toBeVisible();
+  await expect(textarea).toBeDisabled();
   await page.getByRole("button", { name: "メモ" }).click();
 
   await expect(page.getByRole("button", { name: "やりたいこと" })).toBeVisible();
@@ -137,6 +154,7 @@ test("memo choice from ambiguous input asks memo category then saves selected ca
 
   await expect(page.locator(".task-item .task-title")).toHaveText("転職準備");
   await expect(page.locator(".task-item .badge.memo-cat")).toHaveText("やりたいこと");
+  await expect(textarea).toBeEnabled();
 });
 
 test("task title is normalized when input contains due expression", async ({ page }) => {
@@ -161,8 +179,11 @@ test("task title is normalized when input contains due expression", async ({ pag
         summarySlot: "洗濯",
         actionType: "saved",
         quickChoices: [],
-        affectedTaskIds: ["task-2"]
-      });
+        affectedTaskIds: ["task-2"],
+        inputMode: "free_text",
+        confirmationType: null,
+        negativeChoice: null
+      } satisfies ChatResponse);
       return;
     }
 
@@ -171,8 +192,11 @@ test("task title is normalized when input contains due expression", async ({ pag
       summarySlot: "",
       actionType: "error",
       quickChoices: [],
-      affectedTaskIds: []
-    });
+      affectedTaskIds: [],
+      inputMode: "free_text",
+      confirmationType: null,
+      negativeChoice: null
+    } satisfies ChatResponse);
   });
 
   await page.goto("/");
@@ -181,4 +205,65 @@ test("task title is normalized when input contains due expression", async ({ pag
   await page.getByRole("button", { name: "送信" }).click();
 
   await expect(page.locator(".task-item .task-title")).toHaveText("洗濯");
+});
+
+test("choice_then_text_on_negative unlocks free text after ✕", async ({ page }) => {
+  const tasks: Task[] = [];
+
+  await setupBaseApiMocks(page, tasks);
+
+  await page.route("**/v1/chat/messages", async (route) => {
+    const body = route.request().postDataJSON() as ChatRequest;
+
+    if (body.text === "明日の打ち合わせをリマインドして") {
+      await fulfillJson(route, {
+        assistantText: "期限を2026/2/8 09:00（既定時刻）で設定します。よければ○、変更する場合は✕を選んでください。",
+        summarySlot: "打ち合わせ",
+        actionType: "confirm",
+        quickChoices: ["○", "✕"],
+        affectedTaskIds: [],
+        inputMode: "choice_then_text_on_negative",
+        confirmationType: "due_time_confirm",
+        negativeChoice: "✕"
+      } satisfies ChatResponse);
+      return;
+    }
+
+    if (body.selectedChoice === "✕") {
+      await fulfillJson(route, {
+        assistantText: "希望する時刻を入力してください。例: 18時 / 18:30",
+        summarySlot: "打ち合わせ",
+        actionType: "confirm",
+        quickChoices: [],
+        affectedTaskIds: [],
+        inputMode: "free_text",
+        confirmationType: "due_time_confirm",
+        negativeChoice: null
+      } satisfies ChatResponse);
+      return;
+    }
+
+    await fulfillJson(route, {
+      assistantText: "処理できませんでした。",
+      summarySlot: "",
+      actionType: "error",
+      quickChoices: [],
+      affectedTaskIds: [],
+      inputMode: "free_text",
+      confirmationType: null,
+      negativeChoice: null
+    } satisfies ChatResponse);
+  });
+
+  await page.goto("/");
+
+  const textarea = page.getByPlaceholder("例: 明日9時にAさんへ連絡");
+  await textarea.fill("明日の打ち合わせをリマインドして");
+  await page.getByRole("button", { name: "送信" }).click();
+
+  await expect(page.getByRole("button", { name: "✕" })).toBeVisible();
+  await expect(textarea).toBeDisabled();
+
+  await page.getByRole("button", { name: "✕" }).click();
+  await expect(textarea).toBeEnabled();
 });

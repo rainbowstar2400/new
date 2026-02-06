@@ -24,6 +24,8 @@ describe("chat api integration", () => {
     expect(first.statusCode).toBe(200);
     expect(first.json().actionType).toBe("confirm");
     expect(first.json().quickChoices).toContain("設定しない");
+    expect(first.json().inputMode).toBe("choice_only");
+    expect(first.json().confirmationType).toBe("due_choice");
 
     const second = await app.inject({
       method: "POST",
@@ -34,6 +36,7 @@ describe("chat api integration", () => {
 
     expect(second.statusCode).toBe(200);
     expect(second.json().actionType).toBe("saved");
+    expect(second.json().inputMode).toBe("free_text");
 
     const list = await app.inject({
       method: "GET",
@@ -64,6 +67,9 @@ describe("chat api integration", () => {
     });
 
     expect(first.json().quickChoices).toContain("○");
+    expect(first.json().inputMode).toBe("choice_then_text_on_negative");
+    expect(first.json().confirmationType).toBe("due_time_confirm");
+    expect(first.json().negativeChoice).toBe("✕");
 
     const second = await app.inject({
       method: "POST",
@@ -103,6 +109,8 @@ describe("chat api integration", () => {
 
     expect(response.json().actionType).toBe("confirm");
     expect(response.json().quickChoices).toEqual(["タスク", "メモ"]);
+    expect(response.json().inputMode).toBe("choice_only");
+    expect(response.json().confirmationType).toBe("task_or_memo");
   });
 
   it("asks memo category after explicit memo choice from ambiguous input", async () => {
@@ -136,6 +144,8 @@ describe("chat api integration", () => {
 
     expect(second.json().actionType).toBe("confirm");
     expect(second.json().quickChoices).toEqual(["やりたいこと", "アイデア", "メモ（雑多）"]);
+    expect(second.json().inputMode).toBe("choice_only");
+    expect(second.json().confirmationType).toBe("memo_category");
 
     const third = await app.inject({
       method: "POST",
@@ -327,5 +337,38 @@ describe("chat api integration", () => {
 
     expect(response.json().actionType).toBe("confirm");
     expect(response.json().quickChoices).toEqual(["○", "✕"]);
+    expect(response.json().inputMode).toBe("choice_then_text_on_negative");
+    expect(response.json().confirmationType).toBe("task_target_confirm");
+  });
+
+  it("falls back to due-choice confirmation when AI due parsing payload is invalid", async () => {
+    const repo = new MemoryRepository();
+    const app = await createServer({
+      repo,
+      startScheduler: false,
+      dueParseMode: "ai-first",
+      summaryProvider: async () => "請求書送付",
+      dueParserProvider: async () => ({
+        state: "resolved",
+        dueAt: null,
+        timeProvided: true,
+        reason: "invalid_payload"
+      }) as any
+    });
+
+    const reg = await app.inject({ method: "POST", url: "/v1/installations/register", payload: {} });
+    const session = reg.json();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers: { authorization: `Bearer ${session.accessToken}` },
+      payload: { text: "来週金曜に請求書送付" }
+    });
+
+    expect(response.json().actionType).toBe("confirm");
+    expect(response.json().quickChoices).toEqual(["設定する", "設定しない", "後で設定する"]);
+    expect(response.json().inputMode).toBe("choice_only");
+    expect(response.json().confirmationType).toBe("due_choice");
   });
 });

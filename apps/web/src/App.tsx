@@ -8,6 +8,7 @@ import {
   subscribePush,
   type DeviceSession
 } from "./lib/api";
+import { chatControlHint, inferChatControl, isTextInputAllowed, type ChatControlState } from "./lib/chat-control";
 import { dueBadgeLabel, memoCategoryLabel, taskKindLabel } from "./lib/task-view";
 
 type ChatMessage = {
@@ -19,6 +20,12 @@ type ChatMessage = {
 const SESSION_KEY = "secretary_session";
 const DEFAULT_DUE_KEY = "default_due_time";
 const TASK_ID_QUERY_KEY = "taskId";
+
+const DEFAULT_CHAT_CONTROL: ChatControlState = {
+  inputMode: "free_text",
+  confirmationType: null,
+  negativeChoice: null
+};
 
 function newMessageId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -111,6 +118,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [quickChoices, setQuickChoices] = useState<string[]>([]);
+  const [chatControl, setChatControl] = useState<ChatControlState>(DEFAULT_CHAT_CONTROL);
   const [inputText, setInputText] = useState("");
   const [defaultDueTime, setDefaultDueTime] = useState(loadDefaultDueTime());
   const [busy, setBusy] = useState(false);
@@ -169,6 +177,8 @@ export default function App() {
   }, [tasks, focusedTaskId]);
 
   const quickChoiceHelp = useMemo(() => choiceHelpText(quickChoices), [quickChoices]);
+  const chatModeHint = useMemo(() => chatControlHint(chatControl), [chatControl]);
+  const canTypeText = useMemo(() => isTextInputAllowed(chatControl), [chatControl]);
 
   async function refreshTasks(currentSession: DeviceSession): Promise<void> {
     const items = await fetchTasks(currentSession);
@@ -199,6 +209,7 @@ export default function App() {
         }
       ]);
       setQuickChoices(response.quickChoices);
+      setChatControl(inferChatControl(response));
       await refreshTasks(session);
     } catch {
       setMessages((prev) => [
@@ -209,6 +220,8 @@ export default function App() {
           text: "通信エラーが発生しました。もう一度お試しください。"
         }
       ]);
+      setQuickChoices([]);
+      setChatControl(DEFAULT_CHAT_CONTROL);
     } finally {
       setBusy(false);
     }
@@ -217,7 +230,7 @@ export default function App() {
   async function submitInput(event: FormEvent) {
     event.preventDefault();
     const text = inputText.trim();
-    if (!text || busy) return;
+    if (!text || busy || !canTypeText) return;
     setInputText("");
     await postMessage({ text });
   }
@@ -319,14 +332,16 @@ export default function App() {
             ))}
           </div>
           {quickChoiceHelp ? <p className="choice-hint">{quickChoiceHelp}</p> : null}
+          {chatModeHint ? <p className="input-lock-hint">{chatModeHint}</p> : null}
 
           <form className="chat-form" onSubmit={submitInput}>
             <textarea
               value={inputText}
               onChange={(event) => setInputText(event.target.value)}
               placeholder="例: 明日9時にAさんへ連絡"
+              disabled={busy || !canTypeText}
             />
-            <button type="submit" disabled={busy || !session}>
+            <button type="submit" disabled={busy || !session || !canTypeText || !inputText.trim()}>
               送信
             </button>
           </form>

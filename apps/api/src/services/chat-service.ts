@@ -11,6 +11,7 @@ import {
   normalizeTaskTitle,
   memoCategorySavedMessage,
   parseDueFromText,
+  toParsedDueFromCandidate,
   parseOffsetText,
   taskSavedMessage,
   memoSavedMessage,
@@ -21,18 +22,28 @@ import {
   type Task,
   type Reminder,
   type MemoCategory,
-  type ClassificationResult
+  type ClassificationResult,
+  type ConfirmationType,
+  type InputMode,
+  type ParsedDue
 } from "@new/shared";
 import { newId } from "../id";
 import type { AppRepository } from "../repos/types";
 import type { SummaryProvider } from "../gpt/summary-slot";
 import type { ClassificationProvider } from "../gpt/classifier";
+import type { DueParserProvider } from "../gpt/due-parser";
 
 type ChatInput = {
   installationId: string;
   text?: string;
   selectedChoice?: string;
   defaultDueTime?: string;
+};
+type DueParseMode = "ai-first" | "rule-first" | "rule-only";
+
+type DueResolution = {
+  parsedDue: ParsedDue | null;
+  forceConfirmation: boolean;
 };
 
 const CONTEXT_TTL_MS = 30 * 60 * 1000;
@@ -69,19 +80,21 @@ export class ChatService {
   constructor(
     private readonly repo: AppRepository,
     private readonly summaryProvider: SummaryProvider,
-    private readonly classificationProvider: ClassificationProvider
+    private readonly classificationProvider: ClassificationProvider,
+    private readonly dueParser: DueParserProvider,
+    private readonly dueParseMode: DueParseMode = "ai-first"
   ) {}
 
   async handleMessage(input: ChatInput): Promise<ChatMessageResponse> {
     const userInput = asChoiceOrText(input);
     if (!userInput) {
-      return {
+      return this.withUiMeta({
         assistantText: errorMessage("入力が空です。"),
         summarySlot: "",
         actionType: "error",
         quickChoices: [],
         affectedTaskIds: []
-      };
+      });
     }
 
     let context = await this.repo.getConversationContext(input.installationId);
@@ -91,7 +104,7 @@ export class ChatService {
     }
 
     if (context?.pendingType) {
-      const handled = await this.handlePending(context, userInput, input);
+      const handled = this.withUiMeta(await this.handlePending(context, userInput, input));
       await this.repo.appendChatAuditLog({
         id: newId(),
         installationId: input.installationId,
@@ -102,7 +115,7 @@ export class ChatService {
       return handled;
     }
 
-    const fresh = await this.handleFresh(userInput, input);
+    const fresh = this.withUiMeta(await this.handleFresh(userInput, input));
     await this.repo.appendChatAuditLog({
       id: newId(),
       installationId: input.installationId,
@@ -175,7 +188,8 @@ export class ChatService {
     installationId: string,
     defaultDueTime?: string
   ): Promise<ChatMessageResponse> {
-    const parsedDue = parseDueFromText(originalText, { defaultDueTime });
+    const dueResolution = await this.resolveDue(originalText, defaultDueTime);
+    const parsedDue = dueResolution.parsedDue;
     const summary = await this.safeTaskSummary(originalText, parsedDue?.dueAt ?? null);
 
     if (!parsedDue) {
@@ -421,8 +435,9 @@ export class ChatService {
     const step = String(context.payload.step ?? "choice");
 
     if (step === "await_due_text") {
-      const parsedDue = parseDueFromText(userInput, { defaultDueTime: input.defaultDueTime });
-      if (!parsedDue || isPast(parsedDue.dueAt)) {
+      const dueResolution = await this.resolveDue(userInput, input.defaultDueTime);
+      const parsedDue = dueResolution.parsedDue;
+      if (dueResolution.forceConfirmation || !parsedDue || isPast(parsedDue.dueAt)) {
         return {
           assistantText: "期限を日時で解釈できませんでした。例: 来週金曜15時",
           summarySlot: summary,
@@ -552,8 +567,9 @@ export class ChatService {
     const step = String(context.payload.step ?? "confirm_default_time");
 
     if (step === "await_custom_time") {
-      const parsedDue = parseDueFromText(`${originalText} ${userInput}`, { defaultDueTime: input.defaultDueTime });
-      if (!parsedDue || !parsedDue.timeProvided || isPast(parsedDue.dueAt)) {
+      const dueResolution = await this.resolveDue(`${originalText} ${userInput}`, input.defaultDueTime);
+      const parsedDue = dueResolution.parsedDue;
+      if (dueResolution.forceConfirmation || !parsedDue || !parsedDue.timeProvided || isPast(parsedDue.dueAt)) {
         return {
           assistantText: "時刻を解釈できませんでした。例: 18時 / 18:30",
           summarySlot: summary,
@@ -975,6 +991,124 @@ export class ChatService {
     return deterministic;
   }
 
+
+  private withUiMeta(response: ChatMessageResponse): ChatMessageResponse {
+    const confirmationType = response.confirmationType ?? this.inferConfirmationType(response);
+    const inputMode = response.inputMode ?? this.inferInputMode(response, confirmationType);
+    const negativeChoice = response.negativeChoice ?? (inputMode === "choice_then_text_on_negative" ? "✕" : null);
+
+    return {
+      ...response,
+      inputMode,
+      confirmationType,
+      negativeChoice
+    };
+  }
+
+  private inferConfirmationType(response: ChatMessageResponse): ConfirmationType | null {
+    const choices = response.quickChoices;
+    const text = response.assistantText;
+
+    if (choices.includes("タスク") && choices.includes("メモ")) return "task_or_memo";
+    if (choices.includes("やりたいこと") || choices.includes("アイデア") || choices.includes("メモ（雑多）")) {
+      return "memo_category";
+    }
+    if (choices.includes("設定する") && choices.includes("設定しない") && choices.includes("後で設定する")) {
+      return "due_choice";
+    }
+    if (choices.includes("○") && choices.includes("✕")) {
+      return text.includes("対象タスク") ? "task_target_confirm" : "due_time_confirm";
+    }
+
+    if (response.actionType !== "confirm") return null;
+
+    if (text.includes("タスクにしますか？メモにしますか")) return "task_or_memo";
+    if (text.includes("メモの分類")) return "memo_category";
+    if (text.includes("期日はどうしますか") || text.includes("いつを期限")) return "due_choice";
+    if (text.includes("時刻") || text.includes("○/✕")) return "due_time_confirm";
+    if (text.includes("対象タスク")) return "task_target_confirm";
+
+    return null;
+  }
+
+  private inferInputMode(
+    response: ChatMessageResponse,
+    confirmationType: ConfirmationType | null
+  ): InputMode {
+    if (confirmationType === null) return "free_text";
+    if (response.quickChoices.length === 0) return "free_text";
+
+    if (response.quickChoices.includes("○") && response.quickChoices.includes("✕")) {
+      return "choice_then_text_on_negative";
+    }
+
+    return "choice_only";
+  }
+
+  private async resolveDue(text: string, defaultDueTime?: string): Promise<DueResolution> {
+    const resolveRule = (): ParsedDue | null => parseDueFromText(text, { defaultDueTime });
+
+    if (this.dueParseMode === "rule-only") {
+      return { parsedDue: resolveRule(), forceConfirmation: false };
+    }
+
+    if (this.dueParseMode === "rule-first") {
+      const ruleParsed = resolveRule();
+      if (ruleParsed) {
+        return { parsedDue: ruleParsed, forceConfirmation: false };
+      }
+
+      const aiParsed = await this.tryResolveDueWithAi(text, defaultDueTime);
+      if (aiParsed.usedAi) {
+        return {
+          parsedDue: aiParsed.parsedDue,
+          forceConfirmation: aiParsed.forceConfirmation
+        };
+      }
+
+      return { parsedDue: null, forceConfirmation: false };
+    }
+
+    const aiParsed = await this.tryResolveDueWithAi(text, defaultDueTime);
+    if (aiParsed.usedAi) {
+      return {
+        parsedDue: aiParsed.parsedDue,
+        forceConfirmation: aiParsed.forceConfirmation
+      };
+    }
+
+    return { parsedDue: resolveRule(), forceConfirmation: false };
+  }
+
+  private async tryResolveDueWithAi(
+    text: string,
+    defaultDueTime?: string
+  ): Promise<{ usedAi: boolean; parsedDue: ParsedDue | null; forceConfirmation: boolean }> {
+    const candidate = await this.dueParser(text, {
+      defaultDueTime,
+      nowIso: nowIso()
+    });
+
+    if (!candidate) {
+      return { usedAi: false, parsedDue: null, forceConfirmation: false };
+    }
+
+    if (candidate.state !== "resolved") {
+      return { usedAi: true, parsedDue: null, forceConfirmation: true };
+    }
+
+    const parsedDue = toParsedDueFromCandidate(candidate, {
+      defaultDueTime,
+      now: new Date()
+    });
+
+    if (!parsedDue) {
+      return { usedAi: true, parsedDue: null, forceConfirmation: true };
+    }
+
+    return { usedAi: true, parsedDue, forceConfirmation: false };
+  }
+
   private async safeTaskSummary(text: string, dueAt?: string | null): Promise<string> {
     const slot = await this.safeSummary(text, "task", dueAt ?? null);
     return normalizeTaskTitle(slot, text);
@@ -992,3 +1126,4 @@ export class ChatService {
     }
   }
 }
+

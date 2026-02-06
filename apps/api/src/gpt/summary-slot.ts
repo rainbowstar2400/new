@@ -21,6 +21,7 @@ function buildPrompt(inputText: string, facts: SummaryFacts): string {
     taskRule,
     "- 未確定の日時や対象を追加しない",
     "- 入力語句を可能な限り保持",
+    "- 短くし過ぎない",
     "- 80文字以内",
     "- 要約スロットだけ返答",
     `kind=${facts.kind}`,

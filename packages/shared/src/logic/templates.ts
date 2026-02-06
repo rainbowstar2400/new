@@ -26,11 +26,11 @@ export function confirmDueChoiceMessage(summary: string): string {
 }
 
 export function confirmDateOnlyTimeMessage(dateLabel: string): string {
-  return `期限を${dateLabel}に設定します。時刻はこのままで良いですか？（○/✕）`;
+  return `期限を${dateLabel}（既定時刻）で設定します。よければ○、変更する場合は✕を選んでください。`;
 }
 
 export function askDueInputMessage(summary: string): string {
-  return `${summary}ですね。いつを期限にしますか？`; 
+  return `${summary}ですね。期限の日時を入力してください。例: 来週金曜15時`;
 }
 
 export function askTargetConfirmMessage(title: string): string {

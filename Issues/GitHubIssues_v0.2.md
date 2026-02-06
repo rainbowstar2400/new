@@ -55,13 +55,20 @@ Labels: priority:P0|P1|P2, type:Data|Infra|API|Backend|Logic|UI|Reminder|NLG|Tes
 | P0-20 | Push購読API | `priority:P0`, `type:API`, `milestone:MVP-v0.2` |
 | P0-21 | 通知配信ジョブ | `priority:P0`, `type:Job`, `milestone:MVP-v0.2` |
 
-## 3. P1 Issue Drafts
+## 3. P1 Issue Drafts（詳細）
 
-| ID | タイトル | Labels（推奨） |
-| --- | --- | --- |
-| P1-01 | 時刻未指定リマインド改善 | `priority:P1`, `type:Reminder`, `milestone:MVP-v0.2` |
-| P1-02 | 相対日付解釈精度強化 | `priority:P1`, `type:Logic`, `milestone:MVP-v0.2` |
-| P1-03 | 確認UIの操作性改善 | `priority:P1`, `type:UX`, `milestone:MVP-v0.2` |
+| ID | タイトル | Labels（推奨） | 追加Scope（要点） |
+| --- | --- | --- | --- |
+| P1-01 | 時刻未指定リマインド改善 | `priority:P1`, `type:Reminder`, `milestone:MVP-v0.2` | 確認文統一、既定時刻提案強化、`✕` 後のみ自然言語入力 |
+| P1-02 | 相対日付解釈精度強化 | `priority:P1`, `type:Logic`, `milestone:MVP-v0.2` | `OPENAI_DUE_PARSE_MODE` 導入、AI解釈 + 厳格検証、検証失敗時確認戻し |
+| P1-03 | 確認UIの操作性改善 | `priority:P1`, `type:UX`, `milestone:MVP-v0.2` | `inputMode/confirmationType/negativeChoice` 追加、UI入力制御、関連テスト追加 |
+
+### P1 共通 Acceptance Criteria
+
+- `choice_only` で自由入力不可
+- `choice_then_text_on_negative` で `✕` 後のみ自由入力可能
+- AI日時解釈の検証失敗時に `due_choice` へ戻る
+- `v0.1` 回帰観点（`洗濯` 正規化、`〜たい` want分類、`転職準備` 確認）を維持
 
 ## 4. P2 Issue Drafts
 

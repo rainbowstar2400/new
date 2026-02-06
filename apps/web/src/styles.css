@@ -319,3 +319,15 @@ button:disabled {
     align-items: flex-start;
   }
 }
+
+.input-lock-hint {
+  margin: -2px 0 0;
+  font-size: 13px;
+  color: #b35c2a;
+}
+
+textarea:disabled {
+  background: #f2f5f5;
+  color: #6c7a80;
+}
+

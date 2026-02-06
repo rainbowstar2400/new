@@ -11,7 +11,9 @@ import { buildAuthPreHandler } from "./routes/auth";
 import { ChatService } from "./services/chat-service";
 import { createSummaryProvider, type SummaryProvider } from "./gpt/summary-slot";
 import { createClassificationProvider, type ClassificationProvider } from "./gpt/classifier";
+import { createDueParserProvider, type DueParserProvider } from "./gpt/due-parser";
 import { startReminderScheduler } from "./push/scheduler";
+import { loadEnv } from "./env";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -24,6 +26,8 @@ type CreateServerOptions = {
   repo?: AppRepository;
   summaryProvider?: SummaryProvider;
   classificationProvider?: ClassificationProvider;
+  dueParserProvider?: DueParserProvider;
+  dueParseMode?: "ai-first" | "rule-first" | "rule-only";
   startScheduler?: boolean;
 };
 
@@ -31,10 +35,20 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
   const app = Fastify({ logger: false });
   await app.register(cors, { origin: true });
 
+  const env = loadEnv();
   const repo = options.repo ?? createRepository();
   const summaryProvider = options.summaryProvider ?? createSummaryProvider();
   const classificationProvider = options.classificationProvider ?? createClassificationProvider();
-  const chatService = new ChatService(repo, summaryProvider, classificationProvider);
+  const dueParserProvider = options.dueParserProvider ?? createDueParserProvider();
+  const dueParseMode = options.dueParseMode ?? env.OPENAI_DUE_PARSE_MODE;
+
+  const chatService = new ChatService(
+    repo,
+    summaryProvider,
+    classificationProvider,
+    dueParserProvider,
+    dueParseMode
+  );
 
   registerInstallationRoutes(app, repo);
 

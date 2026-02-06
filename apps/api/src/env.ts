@@ -5,6 +5,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default("gpt-4o-mini"),
+  OPENAI_DUE_PARSE_MODE: z.enum(["ai-first", "rule-first", "rule-only"]).default("ai-first"),
   WEB_PUSH_PUBLIC_KEY: z.string().optional(),
   WEB_PUSH_PRIVATE_KEY: z.string().optional(),
   WEB_PUSH_SUBJECT: z.string().default("mailto:admin@example.com"),
