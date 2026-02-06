@@ -34,6 +34,11 @@ describe("classifyInput", () => {
     expect(result.kind).toBe("task");
   });
 
+  it("classifies relative-week cue as task", () => {
+    const result = classifyInput("再来週火曜に会議");
+    expect(result.kind).toBe("task");
+  });
+
   it("classifies bare desire sentence as memo", () => {
     const result = classifyInput("来月は京都に行きたい");
     expect(result.kind).toBe("memo");

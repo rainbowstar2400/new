@@ -31,6 +31,11 @@ describe("summary", () => {
     expect(title).toBe("洗濯");
   });
 
+  it("normalizes task title with relative-week prefix", () => {
+    const title = normalizeTaskTitle("再来週火曜に会議資料を準備", "再来週火曜に会議資料を準備");
+    expect(title).toBe("会議資料を準備");
+  });
+
   it("normalizes task title by removing trailing reminder instruction", () => {
     const title = normalizeTaskTitle("請求書送付をリマインドして", "請求書送付をリマインドして");
     expect(title).toBe("請求書送付");

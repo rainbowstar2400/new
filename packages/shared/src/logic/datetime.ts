@@ -87,20 +87,69 @@ function atDate(base: Date, daysToAdd: number): Date {
   return d;
 }
 
+function startOfWeekMonday(base: Date): Date {
+  const d = new Date(base);
+  const day = d.getDay();
+  const diff = (day + 6) % 7;
+  d.setDate(d.getDate() - diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function dateInWeek(base: Date, weekOffset: number, weekday: number): Date {
+  const weekStart = startOfWeekMonday(base);
+  const mondayIndex = (weekday + 6) % 7;
+  const result = new Date(weekStart);
+  result.setDate(weekStart.getDate() + weekOffset * 7 + mondayIndex);
+  return result;
+}
+
+function nextWeekday(base: Date, weekday: number): Date {
+  const current = base.getDay();
+  let delta = weekday - current;
+  if (delta <= 0) delta += 7;
+  return atDate(base, delta);
+}
+
+function parseWeekdayRelative(text: string, now: Date): Date | null {
+  if (/先週/.test(text)) return null;
+
+  const explicit = text.match(/(今週|来週|再来週|翌週|次週|次の|今度の)\s*([月火水木金土日])曜/);
+  if (explicit) {
+    const prefix = explicit[1];
+    const weekday = WEEKDAY_MAP[explicit[2]];
+
+    if (prefix === "次の" || prefix === "今度の") {
+      return nextWeekday(now, weekday);
+    }
+
+    if (prefix === "今週") {
+      return dateInWeek(now, 0, weekday);
+    }
+
+    if (prefix === "再来週") {
+      return dateInWeek(now, 2, weekday);
+    }
+
+    return dateInWeek(now, 1, weekday);
+  }
+
+  const bare = text.match(/([月火水木金土日])曜/);
+  if (bare) {
+    const weekday = WEEKDAY_MAP[bare[1]];
+    return nextWeekday(now, weekday);
+  }
+
+  return null;
+}
+
 function parseDate(text: string, now: Date): Date | null {
   if (text.includes("明後日")) return atDate(now, 2);
   if (text.includes("明日")) return atDate(now, 1);
   if (text.includes("今日")) return atDate(now, 0);
 
-  const weekday = text.match(/(?:来週|次の)\s*([月火水木金土日])曜/);
-  if (weekday) {
-    const target = WEEKDAY_MAP[weekday[1]];
-    const current = now.getDay();
-    let delta = target - current;
-    if (delta <= 0) delta += 7;
-    if (text.includes("来週")) delta += 7;
-    return atDate(now, delta);
-  }
+  const weekday = parseWeekdayRelative(text, now);
+  if (weekday) return weekday;
 
   const ymd = text.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
   if (ymd) {

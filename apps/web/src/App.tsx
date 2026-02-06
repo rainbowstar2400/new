@@ -67,6 +67,40 @@ function base64ToUint8Array(base64: string): Uint8Array {
   return output;
 }
 
+function choiceTone(choice: string): string {
+  if (choice === "○") return "confirm-yes";
+  if (choice === "✕") return "confirm-no";
+  if (choice === "設定する") return "due-set";
+  if (choice === "設定しない") return "due-none";
+  if (choice === "後で設定する") return "due-later";
+  if (choice === "タスク") return "kind-task";
+  if (choice === "メモ") return "kind-memo";
+  if (choice === "やりたいこと") return "memo-want";
+  if (choice === "アイデア") return "memo-idea";
+  if (choice === "メモ（雑多）") return "memo-misc";
+  return "default";
+}
+
+function choiceHelpText(choices: string[]): string | null {
+  if (choices.includes("○") && choices.includes("✕")) {
+    return "✕ を選ぶと補足の自然言語入力に進みます。";
+  }
+
+  if (choices.includes("設定する") && choices.includes("後で設定する")) {
+    return "設定するを選ぶと、続けて期日を自然言語で入力できます。";
+  }
+
+  if (choices.includes("タスク") && choices.includes("メモ")) {
+    return "判断に迷う場合は、まずメモで保存して後から変更できます。";
+  }
+
+  if (choices.includes("やりたいこと") || choices.includes("アイデア") || choices.includes("メモ（雑多）")) {
+    return "内容に合うメモ分類を選択してください。";
+  }
+
+  return null;
+}
+
 async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!("serviceWorker" in navigator)) return null;
   return navigator.serviceWorker.register("/sw.js");
@@ -133,6 +167,8 @@ export default function App() {
       return 0;
     });
   }, [tasks, focusedTaskId]);
+
+  const quickChoiceHelp = useMemo(() => choiceHelpText(quickChoices), [quickChoices]);
 
   async function refreshTasks(currentSession: DeviceSession): Promise<void> {
     const items = await fetchTasks(currentSession);
@@ -269,13 +305,20 @@ export default function App() {
             ))}
           </div>
 
-          <div className="choices">
+          <div className="choices" aria-live="polite">
             {quickChoices.map((choice) => (
-              <button key={choice} type="button" disabled={busy} onClick={() => void postMessage({ selectedChoice: choice })}>
+              <button
+                key={choice}
+                type="button"
+                className={`choice-btn ${choiceTone(choice)}`}
+                disabled={busy}
+                onClick={() => void postMessage({ selectedChoice: choice })}
+              >
                 {choice}
               </button>
             ))}
           </div>
+          {quickChoiceHelp ? <p className="choice-hint">{quickChoiceHelp}</p> : null}
 
           <form className="chat-form" onSubmit={submitInput}>
             <textarea

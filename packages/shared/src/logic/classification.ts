@@ -10,8 +10,13 @@ const STRONG_TASK_HINTS = [
   "明日",
   "明後日",
   "今日",
+  "今週",
   "来週",
+  "再来週",
+  "翌週",
+  "次週",
   "次の",
+  "今度の",
   "忘れない",
   "しなきゃ",
   "しないと",
@@ -94,7 +99,7 @@ function hasDateTimeCue(text: string): boolean {
   const normalized = normalizeForDateCue(text);
   return (
     /(\d{1,2}\s*[:：]\s*\d{1,2}|\d{1,2}\s*時|\d{4}[-\/]\d{1,2}[-\/]\d{1,2}|\d{1,2}\/\d{1,2}|\d{1,2}月\d{1,2}日)/.test(normalized) ||
-    /(明日|明後日|今日|来週|次の\s*[月火水木金土日]曜)/.test(normalized)
+    /(明日|明後日|今日|今週|来週|再来週|翌週|次週|次の\s*[月火水木金土日]曜|今度の\s*[月火水木金土日]曜)/.test(normalized)
   );
 }
 
