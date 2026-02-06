@@ -169,7 +169,7 @@ export default function App() {
 
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: base64ToUint8Array(publicKey)
+      applicationServerKey: base64ToUint8Array(publicKey) as unknown as BufferSource
     });
 
     await subscribePush(session, subscription);
@@ -267,4 +267,5 @@ export default function App() {
     </div>
   );
 }
+
 
