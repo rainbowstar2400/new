@@ -150,6 +150,7 @@ test("memo choice from ambiguous input asks memo category then saves selected ca
   await page.getByRole("button", { name: "メモ" }).click();
 
   await expect(page.getByRole("button", { name: "やりたいこと" })).toBeVisible();
+  await expect(page.locator(".task-item")).toHaveCount(0);
   await page.getByRole("button", { name: "やりたいこと" }).click();
 
   await expect(page.locator(".task-item .task-title")).toHaveText("転職準備");
@@ -267,3 +268,4 @@ test("choice_then_text_on_negative unlocks free text after ✕", async ({ page }
   await page.getByRole("button", { name: "✕" }).click();
   await expect(textarea).toBeEnabled();
 });
+

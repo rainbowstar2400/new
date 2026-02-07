@@ -315,44 +315,28 @@ export class ChatService {
     }
 
     if (userInput.includes("メモ")) {
-      const category = await this.resolveMemoCategoryForExplicitMemo(originalText);
-      if (category === "misc") {
-        await this.setContext({
-          installationId: input.installationId,
-          pendingType: "memo_category_confirm",
-          candidateTaskIds: [],
-          proposedDueAt: null,
-          proposedOffsetMinutes: null,
-          expiresAt: new Date(Date.now() + CONTEXT_TTL_MS).toISOString(),
-          payload: { originalText, summary },
-          updatedAt: nowIso()
-        });
+      const suggestedCategory = await this.suggestMemoCategoryForExplicitMemo(originalText);
+      const suggestionText = suggestedCategory
+        ? `候補は${memoCategoryLabel(suggestedCategory)}です。`
+        : "";
 
-        return {
-          assistantText: `${summary}ですね。メモの分類を選んでください。`,
-          summarySlot: summary,
-          actionType: "confirm",
-          quickChoices: [...QUICK_MEMO_CATEGORY_CHOICES],
-          affectedTaskIds: []
-        };
-      }
-
-      await this.repo.clearConversationContext(input.installationId);
-      const task = await this.createTaskRecord({
+      await this.setContext({
         installationId: input.installationId,
-        title: summary,
-        kind: "memo",
-        memoCategory: category,
-        dueState: "no_due",
-        dueAt: null,
-        defaultDueTimeApplied: false
+        pendingType: "memo_category_confirm",
+        candidateTaskIds: [],
+        proposedDueAt: null,
+        proposedOffsetMinutes: null,
+        expiresAt: new Date(Date.now() + CONTEXT_TTL_MS).toISOString(),
+        payload: { originalText, summary, suggestedCategory },
+        updatedAt: nowIso()
       });
+
       return {
-        assistantText: memoSavedMessage({ summary, detail: `${memoCategoryLabel(category)}として保存しました。` }),
+        assistantText: `${summary}ですね。メモの分類を選んでください。${suggestionText}`,
         summarySlot: summary,
-        actionType: "saved",
-        quickChoices: [],
-        affectedTaskIds: [task.id]
+        actionType: "confirm",
+        quickChoices: [...QUICK_MEMO_CATEGORY_CHOICES],
+        affectedTaskIds: []
       };
     }
 
@@ -375,8 +359,10 @@ export class ChatService {
     const category = parseMemoCategoryChoice(userInput);
 
     if (!category) {
+      const suggestedCategory = context.payload.suggestedCategory as MemoCategory | undefined;
+      const suggestionText = suggestedCategory ? ` 候補は${memoCategoryLabel(suggestedCategory)}です。` : "";
       return {
-        assistantText: "メモの分類を選んでください。（やりたいこと / アイデア / メモ（雑多））",
+        assistantText: `メモの分類を選んでください。（やりたいこと / アイデア / メモ（雑多））${suggestionText}`,
         summarySlot: summary,
         actionType: "confirm",
         quickChoices: [...QUICK_MEMO_CATEGORY_CHOICES],
@@ -404,7 +390,7 @@ export class ChatService {
     };
   }
 
-  private async resolveMemoCategoryForExplicitMemo(text: string): Promise<MemoCategory> {
+  private async suggestMemoCategoryForExplicitMemo(text: string): Promise<MemoCategory | null> {
     const deterministic = detectMemoCategory(text);
     if (deterministic !== "misc") return deterministic;
 
@@ -415,14 +401,14 @@ export class ChatService {
         ruleConfidence: 0.6
       });
 
-      if (ai?.kind === "memo" && ai.memoCategory) {
+      if (ai?.kind === "memo" && ai.memoCategory && ai.memoCategory !== "misc" && ai.confidence >= 0.65) {
         return ai.memoCategory;
       }
     } catch {
-      // ignore and use manual category selection
+      // ignore and fallback to manual selection
     }
 
-    return "misc";
+    return null;
   }
 
   private async handlePendingDueChoice(
@@ -977,17 +963,35 @@ export class ChatService {
     deterministic: ClassificationResult,
     ai: ClassificationResult
   ): ClassificationResult {
-    if (ai.kind === "ambiguous" && ai.confidence < 0.7) return deterministic;
+    if (ai.confidence < 0.6) return deterministic;
 
-    if (deterministic.kind === "ambiguous" && ai.kind !== "ambiguous" && ai.confidence >= 0.5) {
-      return ai;
-    }
-
-    if (ai.kind !== deterministic.kind && deterministic.confidence >= 0.9 && ai.confidence < 0.8) {
+    if (deterministic.kind === "ambiguous") {
+      if (ai.kind !== "ambiguous" && ai.confidence >= 0.7) {
+        return ai;
+      }
       return deterministic;
     }
 
-    if (ai.confidence >= 0.55) return ai;
+    if (ai.kind === "ambiguous") return deterministic;
+
+    if (ai.kind !== deterministic.kind) {
+      if (ai.confidence >= 0.9 && ai.confidence >= deterministic.confidence + 0.15) {
+        return ai;
+      }
+      return deterministic;
+    }
+
+    if (ai.kind === "memo" && deterministic.kind === "memo") {
+      if (ai.memoCategory && ai.memoCategory !== "misc" && ai.confidence >= 0.7) {
+        return { ...deterministic, memoCategory: ai.memoCategory, confidence: ai.confidence, reason: ai.reason };
+      }
+      return deterministic;
+    }
+
+    if (ai.confidence >= deterministic.confidence + 0.1) {
+      return ai;
+    }
+
     return deterministic;
   }
 
@@ -1126,4 +1130,5 @@ export class ChatService {
     }
   }
 }
+
 

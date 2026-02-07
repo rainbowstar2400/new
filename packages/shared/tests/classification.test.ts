@@ -29,6 +29,11 @@ describe("classifyInput", () => {
     expect(result.kind).toBe("task");
   });
 
+  it("classifies familiar chore nouns as task", () => {
+    const result = classifyInput("買い物");
+    expect(result.kind).toBe("task");
+  });
+
   it("classifies full-width datetime cue as task", () => {
     const result = classifyInput("１８時に出発");
     expect(result.kind).toBe("task");
@@ -50,8 +55,18 @@ describe("classifyInput", () => {
     expect(result.kind).toBe("ambiguous");
   });
 
+  it("treats unknown short noun as ambiguous instead of memo misc", () => {
+    const result = classifyInput("資料整理");
+    expect(result.kind).toBe("ambiguous");
+  });
+
   it("detects idea category", () => {
     const category = detectMemoCategory("作業導線の改善アイデア");
+    expect(category).toBe("idea");
+  });
+
+  it("detects idea from thought wording", () => {
+    const category = detectMemoCategory("新機能の思いつきを残す");
     expect(category).toBe("idea");
   });
 });

@@ -165,6 +165,68 @@ describe("chat api integration", () => {
     expect(list.json().items[0].kind).toBe("memo");
     expect(list.json().items[0].memoCategory).toBe("want");
   });
+  it("asks memo category even when AI suggests one after explicit memo choice", async () => {
+    const repo = new MemoryRepository();
+    const app = await createServer({
+      repo,
+      startScheduler: false,
+      summaryProvider: async () => "転職準備",
+      classificationProvider: async (_text, facts) => {
+        if (facts.ruleReason !== "explicit_memo_choice") return null;
+        return {
+          kind: "memo",
+          memoCategory: "want",
+          confidence: 0.95,
+          reason: "ai_suggest_want"
+        };
+      }
+    });
+
+    const reg = await app.inject({ method: "POST", url: "/v1/installations/register", payload: {} });
+    const session = reg.json();
+    const headers = { authorization: `Bearer ${session.accessToken}` };
+
+    await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers,
+      payload: { text: "転職準備" }
+    });
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers,
+      payload: { selectedChoice: "メモ" }
+    });
+
+    expect(second.json().actionType).toBe("confirm");
+    expect(second.json().quickChoices).toEqual(["やりたいこと", "アイデア", "メモ（雑多）"]);
+    expect(second.json().assistantText).toContain("候補はやりたいこと");
+
+    const listBefore = await app.inject({
+      method: "GET",
+      url: "/v1/tasks",
+      headers
+    });
+    expect(listBefore.json().items.length).toBe(0);
+
+    const third = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers,
+      payload: { selectedChoice: "アイデア" }
+    });
+
+    expect(third.json().actionType).toBe("saved");
+
+    const listAfter = await app.inject({
+      method: "GET",
+      url: "/v1/tasks",
+      headers
+    });
+    expect(listAfter.json().items[0].memoCategory).toBe("idea");
+  });
 
   it("interprets short chore text as task", async () => {
     const repo = new MemoryRepository();
@@ -277,7 +339,7 @@ describe("chat api integration", () => {
     expect(list.json().items[0].title).toBe("洗濯");
   });
 
-  it("uses AI classification result when provided", async () => {
+  it("uses AI classification result when deterministic is ambiguous", async () => {
     const repo = new MemoryRepository();
     const app = await createServer({
       repo,
@@ -298,7 +360,7 @@ describe("chat api integration", () => {
       method: "POST",
       url: "/v1/chat/messages",
       headers: { authorization: `Bearer ${session.accessToken}` },
-      payload: { text: "Aさんへ連絡" }
+      payload: { text: "この件" }
     });
 
     expect(response.json().actionType).toBe("saved");
@@ -372,3 +434,4 @@ describe("chat api integration", () => {
     expect(response.json().confirmationType).toBe("due_choice");
   });
 });
+

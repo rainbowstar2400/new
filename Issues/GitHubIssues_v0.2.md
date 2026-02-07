@@ -75,8 +75,16 @@ Labels: priority:P0|P1|P2, type:Data|Infra|API|Backend|Logic|UI|Reminder|NLG|Tes
 | ID | タイトル | Labels（推奨） |
 | --- | --- | --- |
 | P2-01 | 応答文チューニング | `priority:P2`, `type:NLG`, `milestone:MVP-v0.2` |
-| P2-02 | 境界ケース拡張 | `priority:P2`, `type:Logic`, `milestone:MVP-v0.2` |
+| P2-02 | 分類境界ケース拡張 | `priority:P2`, `type:Logic`, `milestone:MVP-v0.2` |
 | P2-03 | 一覧画面微調整 | `priority:P2`, `type:UX`, `milestone:MVP-v0.2` |
+
+
+### P2-02 追加Scope（分類中心）
+
+- タスク/メモ判定の境界ケースを拡張し、曖昧入力で安易に保存しない
+- `task_or_memo` で `メモ` が選択された場合、`memo_category` 確定前の保存を禁止
+- `v0.1` 回帰観点（`〜たい` want分類、`転職準備` 確認、`洗濯` タスク判定）を維持
+- テストで「メモ選択直後に `misc` 自動保存されない」ことを固定化
 
 ## 5. 推奨ラベル
 
@@ -95,3 +103,8 @@ Labels: priority:P0|P1|P2, type:Data|Infra|API|Backend|Logic|UI|Reminder|NLG|Tes
 - `type:UX`
 - `type:Job`
 - `milestone:MVP-v0.2`
+
+
+
+
+

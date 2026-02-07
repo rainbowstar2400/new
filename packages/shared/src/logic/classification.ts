@@ -1,5 +1,26 @@
 import type { MemoCategory, ClassificationResult } from "../types";
 
+type ReasonCode =
+  | "explicit_task_prefix"
+  | "explicit_memo_prefix"
+  | "datetime_cue"
+  | "task_hint"
+  | "task_noun"
+  | "memo_hint"
+  | "want_expression"
+  | "idea_expression"
+  | "short_unclear"
+  | "fallback_ambiguous";
+
+type ScoreBoard = {
+  task: number;
+  memo: number;
+  want: number;
+  idea: number;
+  taskReasons: ReasonCode[];
+  memoReasons: ReasonCode[];
+};
+
 const STRONG_TASK_HINTS = [
   "リマインド",
   "通知",
@@ -7,16 +28,6 @@ const STRONG_TASK_HINTS = [
   "期限",
   "締切",
   "〆切",
-  "明日",
-  "明後日",
-  "今日",
-  "今週",
-  "来週",
-  "再来週",
-  "翌週",
-  "次週",
-  "次の",
-  "今度の",
   "忘れない",
   "しなきゃ",
   "しないと",
@@ -25,7 +36,9 @@ const STRONG_TASK_HINTS = [
   "返信",
   "送付",
   "支払い",
-  "予約"
+  "予約",
+  "対応",
+  "提出"
 ];
 
 const TASK_NOUN_HINTS = [
@@ -36,7 +49,9 @@ const TASK_NOUN_HINTS = [
   "皿洗い",
   "片付け",
   "請求書送付",
-  "請求書提出"
+  "請求書提出",
+  "連絡",
+  "支払い"
 ];
 
 const MEMO_HINTS = [
@@ -44,12 +59,13 @@ const MEMO_HINTS = [
   "記録",
   "メモ",
   "覚え",
-  "アイデア",
   "観察",
   "振り返り",
   "残して",
   "ログ",
-  "雑記"
+  "雑記",
+  "メモして",
+  "残しておく"
 ];
 
 const WANT_HINTS = ["したい", "しておきたい", "取りたい", "なりたい", "目標", "やりたい", "てみたい"];
@@ -103,11 +119,70 @@ function hasDateTimeCue(text: string): boolean {
   );
 }
 
+function makeScoreBoard(): ScoreBoard {
+  return {
+    task: 0,
+    memo: 0,
+    want: 0,
+    idea: 0,
+    taskReasons: [],
+    memoReasons: []
+  };
+}
+
+function addTaskScore(board: ScoreBoard, score: number, reason: ReasonCode): void {
+  board.task += score;
+  if (!board.taskReasons.includes(reason)) board.taskReasons.push(reason);
+}
+
+function addMemoScore(board: ScoreBoard, score: number, reason: ReasonCode): void {
+  board.memo += score;
+  if (!board.memoReasons.includes(reason)) board.memoReasons.push(reason);
+}
+
+function inferMemoCategory(board: ScoreBoard): MemoCategory {
+  if (board.want >= 3 && board.want >= board.idea) return "want";
+  if (board.idea >= 3) return "idea";
+  return "misc";
+}
+
+function buildScoreBoard(text: string): ScoreBoard {
+  const board = makeScoreBoard();
+  const compact = text.replace(/[\s。、！？!?.]/g, "");
+
+  if (hasDateTimeCue(text)) {
+    addTaskScore(board, 4, "datetime_cue");
+  }
+
+  if (hasAny(text, STRONG_TASK_HINTS)) {
+    addTaskScore(board, 3, "task_hint");
+  }
+
+  if (hasAny(compact, TASK_NOUN_HINTS)) {
+    addTaskScore(board, compact.length <= 8 ? 3 : 2, "task_noun");
+  }
+
+  if (hasAny(text, MEMO_HINTS)) {
+    addMemoScore(board, 3, "memo_hint");
+  }
+
+  if (hasWantExpression(text)) {
+    addMemoScore(board, 4, "want_expression");
+    board.want += 4;
+  }
+
+  if (hasAny(text, IDEA_HINTS)) {
+    addMemoScore(board, 3, "idea_expression");
+    board.idea += 4;
+  }
+
+  return board;
+}
+
 export function detectMemoCategory(text: string): MemoCategory {
   const normalized = normalizeText(text);
-  if (hasWantExpression(normalized)) return "want";
-  if (hasAny(normalized, IDEA_HINTS)) return "idea";
-  return "misc";
+  const board = buildScoreBoard(normalized);
+  return inferMemoCategory(board);
 }
 
 export function classifyInput(text: string): ClassificationResult {
@@ -121,74 +196,55 @@ export function classifyInput(text: string): ClassificationResult {
     };
   }
 
-  const startsMemo = /^(メモ|memo|アイデア|やりたいこと)\s*[:：]?/i.test(normalized);
   const startsTask = /^(タスク|todo)\s*[:：]?/i.test(normalized);
+  const startsMemo = /^(メモ|memo|アイデア|やりたいこと)\s*[:：]?/i.test(normalized);
 
   if (startsTask) {
     return {
       kind: "task",
       memoCategory: null,
-      confidence: 0.95,
+      confidence: 0.98,
       reason: "explicit_task_prefix"
     };
   }
 
   if (startsMemo) {
-    const category = detectMemoCategory(normalized);
     return {
       kind: "memo",
-      memoCategory: category,
-      confidence: 0.95,
+      memoCategory: detectMemoCategory(normalized),
+      confidence: 0.98,
       reason: "explicit_memo_prefix"
     };
   }
 
-  const taskCue = hasDateTimeCue(normalized) || hasAny(normalized, STRONG_TASK_HINTS);
-  const memoCue = hasAny(normalized, MEMO_HINTS);
-  const wantCue = hasWantExpression(normalized);
-
-  if (taskCue) {
-    return {
-      kind: "task",
-      memoCategory: null,
-      confidence: 0.85,
-      reason: "task_cue"
-    };
-  }
-
-  if (memoCue || wantCue) {
-    const category = detectMemoCategory(normalized);
-    return {
-      kind: "memo",
-      memoCategory: category,
-      confidence: 0.8,
-      reason: memoCue ? "memo_cue" : "want_cue"
-    };
-  }
-
+  const board = buildScoreBoard(normalized);
   const compact = normalized.replace(/[\s。、！？!?.]/g, "");
-  if (compact.length <= 12 && hasAny(compact, TASK_NOUN_HINTS)) {
-    return {
-      kind: "task",
-      memoCategory: null,
-      confidence: 0.7,
-      reason: "task_noun"
-    };
-  }
 
-  if (compact.length <= 16) {
+  const maxScore = Math.max(board.task, board.memo);
+  const diff = Math.abs(board.task - board.memo);
+
+  if (maxScore < 3 || diff <= 1 || (compact.length <= 16 && board.task === 0 && board.memo === 0)) {
     return {
       kind: "ambiguous",
       memoCategory: null,
-      confidence: 0.45,
-      reason: "short_unclear"
+      confidence: compact.length <= 16 ? 0.45 : 0.4,
+      reason: compact.length <= 16 ? "short_unclear" : "fallback_ambiguous"
+    };
+  }
+
+  if (board.task > board.memo) {
+    return {
+      kind: "task",
+      memoCategory: null,
+      confidence: Math.min(0.95, 0.55 + board.task * 0.08),
+      reason: board.taskReasons[0] ?? "task_hint"
     };
   }
 
   return {
-    kind: "ambiguous",
-    memoCategory: null,
-    confidence: 0.4,
-    reason: "fallback_ambiguous"
+    kind: "memo",
+    memoCategory: inferMemoCategory(board),
+    confidence: Math.min(0.95, 0.55 + board.memo * 0.08),
+    reason: board.memoReasons[0] ?? "memo_hint"
   };
 }

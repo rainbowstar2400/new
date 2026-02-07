@@ -26,8 +26,8 @@ function buildPrompt(inputText: string, facts: ClassificationFacts): string {
     "次の発話を task / memo / ambiguous に分類してください。",
     "memo の場合は memoCategory を want / idea / misc から必ず1つ選んでください。",
     "task / ambiguous の場合 memoCategory は null。",
-    "不明なら ambiguous を選ぶ。",
-    "ただし願望・希望（〜たい、〜してみたい等）は memo(want) を優先。",
+    "低信頼または文脈不足なら ambiguous を選んでください。",
+    "願望・希望（〜たい、〜してみたい等）は memo(want) を優先。",
     "日時・期限語と実行行為が含まれる場合は task を優先。",
     "出力はJSONのみ。",
     `ruleKind=${facts.ruleKind}`,
@@ -49,6 +49,24 @@ function parseJsonCandidate(raw: string): unknown {
   }
 
   return JSON.parse(trimmed);
+}
+
+function normalizeClassification(input: z.infer<typeof aiClassificationSchema>): ClassificationResult {
+  if (input.kind !== "memo") {
+    return {
+      kind: input.kind,
+      memoCategory: null,
+      confidence: input.confidence,
+      reason: `ai_${input.reason}`
+    };
+  }
+
+  return {
+    kind: "memo",
+    memoCategory: input.memoCategory ?? "misc",
+    confidence: input.confidence,
+    reason: `ai_${input.reason}`
+  };
 }
 
 export function createClassificationProvider(): ClassificationProvider {
@@ -80,22 +98,14 @@ export function createClassificationProvider(): ClassificationProvider {
       const parsed = aiClassificationSchema.safeParse(parseJsonCandidate(content));
       if (!parsed.success) return null;
 
-      const value = parsed.data;
-      if (value.kind !== "memo") {
-        return {
-          kind: value.kind,
-          memoCategory: null,
-          confidence: value.confidence,
-          reason: `ai_${value.reason}`
-        };
+      const normalized = normalizeClassification(parsed.data);
+
+      // 信頼が低すぎる結果は採用せず、deterministicにフォールバックする。
+      if (normalized.confidence < 0.5) {
+        return null;
       }
 
-      return {
-        kind: "memo",
-        memoCategory: value.memoCategory ?? "misc",
-        confidence: value.confidence,
-        reason: `ai_${value.reason}`
-      };
+      return normalized;
     } catch {
       return null;
     }
