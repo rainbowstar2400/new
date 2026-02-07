@@ -433,5 +433,66 @@ describe("chat api integration", () => {
     expect(response.json().inputMode).toBe("choice_only");
     expect(response.json().confirmationType).toBe("due_choice");
   });
+  it("uses polite tone when responseTone is omitted", async () => {
+    const repo = new MemoryRepository();
+    const app = await createServer({
+      repo,
+      startScheduler: false,
+      summaryProvider: async () => "京都旅行に行きたい"
+    });
+
+    const reg = await app.inject({ method: "POST", url: "/v1/installations/register", payload: {} });
+    const session = reg.json();
+    const headers = { authorization: `Bearer ${session.accessToken}` };
+
+    const omitted = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers,
+      payload: { text: "京都旅行に行きたい" }
+    });
+
+    const explicit = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers,
+      payload: { text: "京都旅行に行きたい", responseTone: "polite" }
+    });
+
+    expect(omitted.statusCode).toBe(200);
+    expect(explicit.statusCode).toBe(200);
+    expect(omitted.json().assistantText).toBe(explicit.json().assistantText);
+  });
+
+  it("changes assistant tone when responseTone is specified", async () => {
+    const repo = new MemoryRepository();
+    const app = await createServer({
+      repo,
+      startScheduler: false,
+      summaryProvider: async () => "京都旅行に行きたい"
+    });
+
+    const reg = await app.inject({ method: "POST", url: "/v1/installations/register", payload: {} });
+    const session = reg.json();
+    const headers = { authorization: `Bearer ${session.accessToken}` };
+
+    const polite = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers,
+      payload: { text: "京都旅行に行きたい", responseTone: "polite" }
+    });
+
+    const friendly = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers,
+      payload: { text: "京都旅行に行きたい", responseTone: "friendly" }
+    });
+
+    expect(polite.statusCode).toBe(200);
+    expect(friendly.statusCode).toBe(200);
+    expect(friendly.json().assistantText).not.toBe(polite.json().assistantText);
+  });
 });
 

@@ -1,4 +1,4 @@
-import type { ChatMessageResponse, Task } from "@new/shared";
+import type { ChatMessageResponse, ResponseTone, Task } from "@new/shared";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -12,6 +12,7 @@ type ChatRequest = {
   text?: string;
   selectedChoice?: string;
   defaultDueTime?: string;
+  responseTone?: ResponseTone;
 };
 
 function endpoint(path: string): string {

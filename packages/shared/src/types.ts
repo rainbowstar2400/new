@@ -73,6 +73,8 @@ export type DeviceSession = z.infer<typeof deviceSessionSchema>;
 export const inputModeSchema = z.enum(["free_text", "choice_only", "choice_then_text_on_negative"]);
 export type InputMode = z.infer<typeof inputModeSchema>;
 
+export const responseToneSchema = z.enum(["polite", "friendly", "concise"]);
+export type ResponseTone = z.infer<typeof responseToneSchema>;
 export const confirmationTypeSchema = z.enum([
   "task_or_memo",
   "memo_category",
@@ -123,3 +125,4 @@ export type ParsedOffset = {
   offsetMinutes: number;
   source: string;
 };
+

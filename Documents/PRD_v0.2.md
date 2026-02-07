@@ -20,6 +20,7 @@
 - オフセット調整
 - 対象曖昧時の `○/✕` 確認
 - 応答テンプレート + GPT要約スロット + フォールバック
+- 応答文体設定（`丁寧/フレンドリー/簡潔`）
 - 匿名デバイスID登録
 - Web Push購読/配信
 
@@ -39,10 +40,8 @@
 | FR-03 | メモを `やりたいこと/アイデア/メモ（雑多）` に分類できること |
 | FR-04 | タスクで期日未指定時に `設定する/設定しない/後で設定する` を提示すること |
 | FR-05 | `設定する` 選択時のみ、自然言語で期日入力を受け付けること |
-| FR-06 | `設定しない` は 
-o_due`、`後で設定する` は `pending_due` で保存すること |
-| FR-07 | `pending_due` を一覧で `!期日設定` として強調し 
-o_due` と区別すること |
+| FR-06 | `設定しない` は `no_due`、`後で設定する` は `pending_due` で保存すること |
+| FR-07 | `pending_due` を一覧で `!期日設定` として強調し `no_due` と区別すること |
 | FR-08 | 日付のみ期限は `default_due_time` を補完して `○/✕` 確認を返すこと |
 | FR-09 | `○/✕` 確認で `✕` が選ばれた場合のみ自然言語補足入力を受け付けること |
 | FR-10 | 期限は日時で保存し、日付のみ状態を残さないこと |
@@ -57,9 +56,10 @@ o_due` と区別すること |
 | FR-19 | 匿名デバイスIDを払い出し、インストール単位でデータ分離すること |
 | FR-20 | Push購読情報を保存し、有効な購読先へ配信できること |
 | FR-21 | 監査ログを最小限（入力/応答/時刻）で保持できること |
-| FR-22 | `/v1/chat/messages` は入力制御メタ（`inputMode`/`confirmationType`/
-egativeChoice`）を返せること |
+| FR-22 | `/v1/chat/messages` は入力制御メタ（`inputMode`/`confirmationType`/`negativeChoice`）を返せること |
 | FR-23 | `task_or_memo` で `メモ` が選択された場合、保存前に `memo_category` 確認を必須にすること |
+| FR-24 | 文体設定 `responseTone`（`polite/friendly/concise`）を受け取り、応答文へ反映できること |
+| FR-25 | 文体設定は端末ローカル保持とし、サーバー永続化しないこと |
 
 ## 5. データ要件
 
@@ -71,8 +71,7 @@ egativeChoice`）を返せること |
 
 ### 5.2 Reminder
 
-- `id`, `taskId`, `baseTime`, `offsetMinutes`, 
-otifyAt`, `status`
+- `id`, `taskId`, `baseTime`, `offsetMinutes`, `notifyAt`, `status`
 - `createdAt`, `updatedAt`
 
 ### 5.3 Conversation Context
@@ -100,7 +99,14 @@ otifyAt`, `status`
 - GET `/v1/tasks`
 - GET `/v1/reminders/upcoming`
 
-### 6.1 ChatMessageResponse（追記）
+### 6.1 ChatRequest（追記）
+
+- `text?: string`
+- `selectedChoice?: string`
+- `defaultDueTime?: string`
+- `responseTone?: "polite" | "friendly" | "concise"`（未指定時 `polite`）
+
+### 6.2 ChatMessageResponse（追記）
 
 - `assistantText: string`
 - `summarySlot: string`
@@ -109,8 +115,7 @@ otifyAt`, `status`
 - `affectedTaskIds: string[]`
 - `inputMode?: "free_text" | "choice_only" | "choice_then_text_on_negative"`
 - `confirmationType?: "task_or_memo" | "memo_category" | "due_choice" | "due_time_confirm" | "task_target_confirm" | null`
-- 
-egativeChoice?: string | null`
+- `negativeChoice?: string | null`
 
 ### 認可
 
@@ -122,10 +127,17 @@ egativeChoice?: string | null`
 - 既定は `ai-first`
 - `ai-first` では AIが `resolved` 以外を返した場合、自動保存せず確認質問へ戻す
 - AI結果は厳格検証（ISO妥当性、必須項目、過去日時）を通過した場合のみ採用する
-- 検証失敗は 
-eeds_confirmation` と同等に扱う
+- 検証失敗は `needs_confirmation` と同等に扱う
 
-## 8. 非機能要件（NFR）
+## 8. 応答文ポリシー（P2-01改訂）
+
+- 文体は `polite/friendly/concise` の3種
+- 既定は `polite`
+- 文面選択は決定論ローテーション（seed）で再現可能にする
+- 文体設定は端末ローカル保持し、毎回 `/v1/chat/messages` に送る
+- サーバー側は文体設定を保存しない
+
+## 9. 非機能要件（NFR）
 
 - 性能: 入力開始から保存完了5秒以内を80%以上で達成
 - 品質: タスク/メモ修正率20%以下、メモ内25%以下
@@ -133,7 +145,7 @@ eeds_confirmation` と同等に扱う
 - 可用性: 主要機能はネットワーク一時不安定時にも再試行可能であること
 - プライバシー: 目的限定・最小送信を遵守すること
 
-## 9. KPI
+## 10. KPI
 
 - 5秒以内保存率 80%以上
 - タスク/メモ修正率 20%以下
@@ -141,7 +153,7 @@ eeds_confirmation` と同等に扱う
 - リマインド調整成功率 95%以上
 - 通知後10分以内確認率 70%以上
 
-## 10. 主要受け入れ基準
+## 11. 主要受け入れ基準
 
 - `UC-02`: 期日未指定タスクで3択が表示される
 - `UC-08`: 日付のみ入力で `○/✕` が表示される
@@ -153,21 +165,19 @@ eeds_confirmation` と同等に扱う
 - `UC-P1-01`: `choice_only` では自由入力不可
 - `UC-P1-02`: `choice_then_text_on_negative` では `✕` 後のみ自由入力可能
 - `UC-P1-03`: AI日時解釈の検証失敗時に確認フローへ戻る
+- `UC-P2-01`: 文体設定変更後、保存/確認/エラー応答のトーンが切り替わる
 - `UC-P2-02`: `タスク/メモ` で `メモ` 選択時は、カテゴリ選択前に自動保存されない
 
-## 11. v0.1 回帰チェック観点
+## 12. v0.1 回帰チェック観点
 
 - `明日18時に洗濯` はタイトル `洗濯` で保存される
 - `〜たい` 系入力は `memo(want)` を維持する
 - `転職準備` は即保存せずタスク/メモ確認を返す
 - `タスク/メモ` で `メモ` を選択した場合は、カテゴリ確認後にのみ保存される
 
-## 12. リリース条件
+## 13. リリース条件
 
 - `Backlog_v0.2.md` のP0が完了
 - 主要単体/結合/E2Eテストが緑化
 - Push購読と通知導線が実機で動作
 - ドキュメント (`Documents/*_v0.2.md`) と Issue定義 (`Issues/*_v0.2.md`) が同期している
-
-
-

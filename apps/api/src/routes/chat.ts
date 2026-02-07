@@ -5,7 +5,8 @@ import type { ChatService } from "../services/chat-service";
 const bodySchema = z.object({
   text: z.string().optional(),
   selectedChoice: z.string().optional(),
-  defaultDueTime: z.string().optional()
+  defaultDueTime: z.string().optional(),
+  responseTone: z.enum(["polite", "friendly", "concise"]).optional()
 });
 
 export function registerChatRoutes(app: FastifyInstance, chatService: ChatService) {
@@ -23,9 +24,11 @@ export function registerChatRoutes(app: FastifyInstance, chatService: ChatServic
       installationId: request.installationId,
       text: parsed.data.text,
       selectedChoice: parsed.data.selectedChoice,
-      defaultDueTime: parsed.data.defaultDueTime
+      defaultDueTime: parsed.data.defaultDueTime,
+      responseTone: parsed.data.responseTone ?? "polite"
     });
 
     return response;
   });
 }
+

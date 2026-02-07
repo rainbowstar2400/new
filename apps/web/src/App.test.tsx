@@ -166,5 +166,65 @@ describe("App", () => {
       expect(unlockedTextarea).toBeEnabled();
     });
   });
+  it("stores response tone and sends it in chat payload", async () => {
+    let lastChatPayload: Record<string, unknown> | null = null;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url.includes("/v1/installations/register")) {
+          return new Response(
+            JSON.stringify({
+              installationId: "i1",
+              accessToken: "t1",
+              timezone: "Asia/Tokyo"
+            }),
+            { status: 200 }
+          );
+        }
+
+        if (url.includes("/v1/tasks")) {
+          return new Response(JSON.stringify({ items: [] }), { status: 200 });
+        }
+
+        if (url.includes("/v1/chat/messages")) {
+          lastChatPayload = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+          return new Response(
+            JSON.stringify({
+              assistantText: "了解しました。",
+              summarySlot: "",
+              actionType: "saved",
+              quickChoices: [],
+              affectedTaskIds: [],
+              inputMode: "free_text",
+              confirmationType: null,
+              negativeChoice: null
+            }),
+            { status: 200 }
+          );
+        }
+
+        return new Response(JSON.stringify({}), { status: 200 });
+      })
+    );
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "自分専用秘書PWA" })).toBeInTheDocument());
+
+    const toneSelect = screen.getByLabelText("応答文の文体") as HTMLSelectElement;
+    fireEvent.change(toneSelect, { target: { value: "friendly" } });
+    expect(localStorage.getItem("response_tone")).toBe("friendly");
+
+    const textarea = screen.getByPlaceholderText("例: 明日9時にAさんへ連絡") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "洗濯" } });
+    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+
+    await waitFor(() => expect(lastChatPayload).not.toBeNull());
+    if (lastChatPayload === null) throw new Error("chat payload is null");
+    expect(lastChatPayload["responseTone"]).toBe("friendly");
+  });
 });
+
 

@@ -5,7 +5,13 @@ import { chatControlHint, inferChatControl, isTextInputAllowed } from "./lib/cha
 import { dueBadgeLabel, memoCategoryLabel, taskKindLabel } from "./lib/task-view";
 const SESSION_KEY = "secretary_session";
 const DEFAULT_DUE_KEY = "default_due_time";
+const RESPONSE_TONE_KEY = "response_tone";
 const TASK_ID_QUERY_KEY = "taskId";
+const RESPONSE_TONE_OPTIONS = [
+    { value: "polite", label: "丁寧" },
+    { value: "friendly", label: "フレンドリー" },
+    { value: "concise", label: "簡潔" }
+];
 const DEFAULT_CHAT_CONTROL = {
     inputMode: "free_text",
     confirmationType: null,
@@ -30,6 +36,13 @@ function saveStoredSession(session) {
 }
 function loadDefaultDueTime() {
     return localStorage.getItem(DEFAULT_DUE_KEY) ?? "09:00";
+}
+function isResponseTone(value) {
+    return value === "polite" || value === "friendly" || value === "concise";
+}
+function loadResponseTone() {
+    const raw = localStorage.getItem(RESPONSE_TONE_KEY);
+    return raw && isResponseTone(raw) ? raw : "polite";
 }
 function readTaskIdFromQuery() {
     if (typeof window === "undefined")
@@ -106,6 +119,7 @@ export default function App() {
     const [chatControl, setChatControl] = useState(DEFAULT_CHAT_CONTROL);
     const [inputText, setInputText] = useState("");
     const [defaultDueTime, setDefaultDueTime] = useState(loadDefaultDueTime());
+    const [responseTone, setResponseTone] = useState(loadResponseTone());
     const [busy, setBusy] = useState(false);
     const [statusText, setStatusText] = useState("起動中...");
     const [focusedTaskId, setFocusedTaskId] = useState(readTaskIdFromQuery());
@@ -177,7 +191,8 @@ export default function App() {
             }
             const response = await sendChatMessage(session, {
                 ...payload,
-                defaultDueTime
+                defaultDueTime,
+                responseTone
             });
             setMessages((prev) => [
                 ...prev,
@@ -260,5 +275,9 @@ export default function App() {
         setDefaultDueTime(next);
         localStorage.setItem(DEFAULT_DUE_KEY, next);
     }
-    return (_jsxs("div", { className: "app-shell", children: [_jsxs("header", { className: "topbar", children: [_jsxs("div", { children: [_jsx("p", { className: "eyebrow", children: "Online MVP v0.2" }), _jsx("h1", { children: "\u81EA\u5206\u5C02\u7528\u79D8\u66F8PWA" })] }), _jsx("p", { children: statusText })] }), focusedTaskId ? (_jsxs("section", { className: "focus-banner", children: [_jsx("p", { children: "\u901A\u77E5\u304B\u3089\u958B\u3044\u305F\u30BF\u30B9\u30AF\u3092\u4E0A\u90E8\u8868\u793A\u3057\u3066\u3044\u307E\u3059\u3002" }), _jsx("button", { type: "button", onClick: onClearFocusTask, children: "\u8868\u793A\u3092\u89E3\u9664" })] })) : null, _jsxs("main", { className: "layout", children: [_jsxs("section", { className: "panel chat-panel", children: [_jsx("h2", { children: "\u4F1A\u8A71\u5165\u529B" }), _jsx("p", { className: "muted", children: "\u4F1A\u8A71\u3067\u5165\u529B\u3057\u3001\u78BA\u8A8D\u306F\u9078\u629E\u80A2\u3067\u78BA\u5B9A\u3057\u307E\u3059\u3002" }), _jsxs("div", { className: "messages", children: [messages.length === 0 ? _jsx("p", { className: "muted", children: "\u6700\u521D\u306E\u5165\u529B\u3092\u9001\u4FE1\u3057\u3066\u304F\u3060\u3055\u3044\u3002" }) : null, messages.map((message) => (_jsx("div", { className: `message ${message.role}`, children: message.text }, message.id)))] }), _jsx("div", { className: "choices", "aria-live": "polite", children: quickChoices.map((choice) => (_jsx("button", { type: "button", className: `choice-btn ${choiceTone(choice)}`, disabled: busy, onClick: () => void postMessage({ selectedChoice: choice }), children: choice }, choice))) }), quickChoiceHelp ? _jsx("p", { className: "choice-hint", children: quickChoiceHelp }) : null, chatModeHint ? _jsx("p", { className: "input-lock-hint", children: chatModeHint }) : null, _jsxs("form", { className: "chat-form", onSubmit: submitInput, children: [_jsx("textarea", { value: inputText, onChange: (event) => setInputText(event.target.value), placeholder: "\u4F8B: \u660E\u65E59\u6642\u306BA\u3055\u3093\u3078\u9023\u7D61", disabled: busy || !canTypeText }), _jsx("button", { type: "submit", disabled: busy || !session || !canTypeText || !inputText.trim(), children: "\u9001\u4FE1" })] })] }), _jsxs("section", { className: "panel side-panel", children: [_jsx("h2", { children: "\u8A2D\u5B9A" }), _jsxs("label", { className: "label", children: ["\u65E2\u5B9A\u6642\u523B", _jsx("input", { type: "time", value: defaultDueTime, onChange: (event) => saveDefaultDueTime(event.target.value) })] }), _jsx("button", { type: "button", onClick: () => void onPushSubscribe(), children: "\u901A\u77E5\u3092\u6709\u52B9\u5316" }), _jsx("h2", { children: "\u30BF\u30B9\u30AF\u30FB\u30E1\u30E2\u4E00\u89A7" }), _jsx("ul", { className: "task-list", children: sortedTasks.map((task) => (_jsxs("li", { "data-task-id": task.id, className: `task-item ${task.id === focusedTaskId ? "focused" : ""}`, children: [_jsx("p", { className: "task-title", children: task.title }), _jsxs("div", { className: "meta-row", children: [_jsx("span", { className: `badge ${task.kind}`, children: taskKindLabel(task) }), task.memoCategory ? _jsx("span", { className: "badge memo-cat", children: memoCategoryLabel(task.memoCategory) }) : null, _jsx("span", { className: `badge due ${task.dueState}`, children: dueBadgeLabel(task) })] }), _jsx("button", { type: "button", onClick: () => void onReclassify(task), children: task.kind === "task" ? "メモへ変更" : "タスクへ変更" })] }, task.id))) })] })] })] }));
+    function saveResponseTone(next) {
+        setResponseTone(next);
+        localStorage.setItem(RESPONSE_TONE_KEY, next);
+    }
+    return (_jsxs("div", { className: "app-shell", children: [_jsxs("header", { className: "topbar", children: [_jsxs("div", { children: [_jsx("p", { className: "eyebrow", children: "Online MVP v0.2" }), _jsx("h1", { children: "\u81EA\u5206\u5C02\u7528\u79D8\u66F8PWA" })] }), _jsx("p", { children: statusText })] }), focusedTaskId ? (_jsxs("section", { className: "focus-banner", children: [_jsx("p", { children: "\u901A\u77E5\u304B\u3089\u958B\u3044\u305F\u30BF\u30B9\u30AF\u3092\u4E0A\u90E8\u8868\u793A\u3057\u3066\u3044\u307E\u3059\u3002" }), _jsx("button", { type: "button", onClick: onClearFocusTask, children: "\u8868\u793A\u3092\u89E3\u9664" })] })) : null, _jsxs("main", { className: "layout", children: [_jsxs("section", { className: "panel chat-panel", children: [_jsx("h2", { children: "\u4F1A\u8A71\u5165\u529B" }), _jsx("p", { className: "muted", children: "\u4F1A\u8A71\u3067\u5165\u529B\u3057\u3001\u78BA\u8A8D\u306F\u9078\u629E\u80A2\u3067\u78BA\u5B9A\u3057\u307E\u3059\u3002" }), _jsxs("div", { className: "messages", children: [messages.length === 0 ? _jsx("p", { className: "muted", children: "\u6700\u521D\u306E\u5165\u529B\u3092\u9001\u4FE1\u3057\u3066\u304F\u3060\u3055\u3044\u3002" }) : null, messages.map((message) => (_jsx("div", { className: `message ${message.role}`, children: message.text }, message.id)))] }), _jsx("div", { className: "choices", "aria-live": "polite", children: quickChoices.map((choice) => (_jsx("button", { type: "button", className: `choice-btn ${choiceTone(choice)}`, disabled: busy, onClick: () => void postMessage({ selectedChoice: choice }), children: choice }, choice))) }), quickChoiceHelp ? _jsx("p", { className: "choice-hint", children: quickChoiceHelp }) : null, chatModeHint ? _jsx("p", { className: "input-lock-hint", children: chatModeHint }) : null, _jsxs("form", { className: "chat-form", onSubmit: submitInput, children: [_jsx("textarea", { value: inputText, onChange: (event) => setInputText(event.target.value), placeholder: "\u4F8B: \u660E\u65E59\u6642\u306BA\u3055\u3093\u3078\u9023\u7D61", disabled: busy || !canTypeText }), _jsx("button", { type: "submit", disabled: busy || !session || !canTypeText || !inputText.trim(), children: "\u9001\u4FE1" })] })] }), _jsxs("section", { className: "panel side-panel", children: [_jsx("h2", { children: "\u8A2D\u5B9A" }), _jsxs("label", { className: "label", children: ["\u65E2\u5B9A\u6642\u523B", _jsx("input", { type: "time", value: defaultDueTime, onChange: (event) => saveDefaultDueTime(event.target.value) })] }), _jsxs("label", { className: "label", children: ["\u5FDC\u7B54\u6587\u306E\u6587\u4F53", _jsx("select", { value: responseTone, onChange: (event) => saveResponseTone(event.target.value), children: RESPONSE_TONE_OPTIONS.map((option) => (_jsx("option", { value: option.value, children: option.label }, option.value))) })] }), _jsx("button", { type: "button", onClick: () => void onPushSubscribe(), children: "\u901A\u77E5\u3092\u6709\u52B9\u5316" }), _jsx("h2", { children: "\u30BF\u30B9\u30AF\u30FB\u30E1\u30E2\u4E00\u89A7" }), _jsx("ul", { className: "task-list", children: sortedTasks.map((task) => (_jsxs("li", { "data-task-id": task.id, className: `task-item ${task.id === focusedTaskId ? "focused" : ""}`, children: [_jsx("p", { className: "task-title", children: task.title }), _jsxs("div", { className: "meta-row", children: [_jsx("span", { className: `badge ${task.kind}`, children: taskKindLabel(task) }), task.memoCategory ? _jsx("span", { className: "badge memo-cat", children: memoCategoryLabel(task.memoCategory) }) : null, _jsx("span", { className: `badge due ${task.dueState}`, children: dueBadgeLabel(task) })] }), _jsx("button", { type: "button", onClick: () => void onReclassify(task), children: task.kind === "task" ? "メモへ変更" : "タスクへ変更" })] }, task.id))) })] })] })] }));
 }

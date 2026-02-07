@@ -4,6 +4,7 @@ import type { Task } from "@new/shared";
 type ChatRequest = {
   text?: string;
   selectedChoice?: string;
+  responseTone?: "polite" | "friendly" | "concise";
 };
 
 type ChatResponse = {
@@ -267,5 +268,52 @@ test("choice_then_text_on_negative unlocks free text after ✕", async ({ page }
 
   await page.getByRole("button", { name: "✕" }).click();
   await expect(textarea).toBeEnabled();
+});
+
+
+
+
+test("response tone setting persists and is sent in chat payload", async ({ page }) => {
+  const tasks: Task[] = [];
+  let latestTone: string | undefined;
+
+  await setupBaseApiMocks(page, tasks);
+
+  await page.route("**/v1/chat/messages", async (route) => {
+    const body = route.request().postDataJSON() as ChatRequest;
+    latestTone = body.responseTone;
+
+    const textByTone: Record<string, string> = {
+      polite: "丁寧トーンで応答します。",
+      friendly: "フレンドリートーンで応答するね！",
+      concise: "簡潔トーン応答。"
+    };
+
+    await fulfillJson(route, {
+      assistantText: textByTone[body.responseTone ?? "polite"],
+      summarySlot: body.text ?? "",
+      actionType: "saved",
+      quickChoices: [],
+      affectedTaskIds: [],
+      inputMode: "free_text",
+      confirmationType: null,
+      negativeChoice: null
+    } satisfies ChatResponse);
+  });
+
+  await page.goto("/");
+
+  const toneSelect = page.getByLabel("応答文の文体");
+  await toneSelect.selectOption("friendly");
+  await expect(toneSelect).toHaveValue("friendly");
+
+  await page.getByPlaceholder("例: 明日9時にAさんへ連絡").fill("洗濯");
+  await page.getByRole("button", { name: "送信" }).click();
+
+  await expect(page.getByText("フレンドリートーンで応答するね！")).toBeVisible();
+  expect(latestTone).toBe("friendly");
+
+  await page.reload();
+  await expect(page.getByLabel("応答文の文体")).toHaveValue("friendly");
 });
 

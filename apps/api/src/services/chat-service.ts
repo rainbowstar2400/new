@@ -1,31 +1,57 @@
 import {
   applyOffset,
+  askCustomTimeMessage,
+  askDueInputMessage,
+  askTargetConfirmMessage,
+  askTargetNameMessage,
+  chooseCircleCrossMessage,
+  chooseDueChoiceMessage,
+  chooseMemoCategoryMessage,
+  chooseTaskOrMemoMessage,
   classifyInput,
   confirmDateOnlyTimeMessage,
   confirmDueChoiceMessage,
   confirmTaskOrMemoMessage,
+  detailAppliedSuggestedTime,
+  detailNoDue,
+  detailPendingDue,
+  detailRemindAt,
+  detailSetAt,
   detectMemoCategory,
+  dueParseFailedMessage,
+  emptyInputMessage,
   errorMessage,
   fallbackSummarySlot,
+  invalidContextMessage,
+  invalidProposedDueMessage,
   isPast,
-  normalizeTaskTitle,
   memoCategorySavedMessage,
-  parseDueFromText,
-  toParsedDueFromCandidate,
-  parseOffsetText,
-  taskSavedMessage,
   memoSavedMessage,
-  askDueInputMessage,
-  askTargetConfirmMessage,
+  missingDueForTaskMessage,
+  noScheduledTaskMessage,
+  normalizeTaskTitle,
+  parseDueFromText,
+  parseOffsetText,
+  pastDueNotAllowedMessage,
+  reminderAdjustedMessage,
+  reclassifiedToMemoMessage,
+  reclassifiedToTaskMessage,
+  reclassifyIntentUnknownMessage,
+  reclassifyTargetMissingMessage,
+  targetResolveFailedMessage,
+  taskSavedMessage,
+  timeParseFailedMessage,
+  toParsedDueFromCandidate,
   type ChatMessageResponse,
-  type ConversationContext,
-  type Task,
-  type Reminder,
-  type MemoCategory,
   type ClassificationResult,
   type ConfirmationType,
+  type ConversationContext,
   type InputMode,
-  type ParsedDue
+  type MemoCategory,
+  type ParsedDue,
+  type Reminder,
+  type ResponseTone,
+  type Task
 } from "@new/shared";
 import { newId } from "../id";
 import type { AppRepository } from "../repos/types";
@@ -38,6 +64,7 @@ type ChatInput = {
   text?: string;
   selectedChoice?: string;
   defaultDueTime?: string;
+  responseTone?: ResponseTone;
 };
 type DueParseMode = "ai-first" | "rule-first" | "rule-only";
 
@@ -85,11 +112,28 @@ export class ChatService {
     private readonly dueParseMode: DueParseMode = "ai-first"
   ) {}
 
+  private resolveTone(input: ChatInput): ResponseTone {
+    return input.responseTone ?? "polite";
+  }
+
+  private messageSeed(
+    installationId: string,
+    messageKey: string,
+    summarySlot = "",
+    quickChoices: readonly string[] = []
+  ): string {
+    return [installationId, messageKey, summarySlot, quickChoices.join("|")].join("::");
+  }
+
   async handleMessage(input: ChatInput): Promise<ChatMessageResponse> {
+    const tone = this.resolveTone(input);
     const userInput = asChoiceOrText(input);
     if (!userInput) {
       return this.withUiMeta({
-        assistantText: errorMessage("入力が空です。"),
+        assistantText: emptyInputMessage({
+          tone,
+          seed: this.messageSeed(input.installationId, "empty_input")
+        }),
         summarySlot: "",
         actionType: "error",
         quickChoices: [],
@@ -104,7 +148,7 @@ export class ChatService {
     }
 
     if (context?.pendingType) {
-      const handled = this.withUiMeta(await this.handlePending(context, userInput, input));
+      const handled = this.withUiMeta(await this.handlePending(context, userInput, input, tone));
       await this.repo.appendChatAuditLog({
         id: newId(),
         installationId: input.installationId,
@@ -115,7 +159,7 @@ export class ChatService {
       return handled;
     }
 
-    const fresh = this.withUiMeta(await this.handleFresh(userInput, input));
+    const fresh = this.withUiMeta(await this.handleFresh(userInput, input, tone));
     await this.repo.appendChatAuditLog({
       id: newId(),
       installationId: input.installationId,
@@ -126,14 +170,14 @@ export class ChatService {
     return fresh;
   }
 
-  private async handleFresh(userText: string, input: ChatInput): Promise<ChatMessageResponse> {
+  private async handleFresh(userText: string, input: ChatInput, tone: ResponseTone): Promise<ChatMessageResponse> {
     if (this.isReclassifyCommand(userText)) {
-      return this.handleReclassify(userText, input.installationId);
+      return this.handleReclassify(userText, input.installationId, tone);
     }
 
     const parsedOffset = parseOffsetText(userText);
     if (parsedOffset && userText.includes("リマインド")) {
-      return this.handleOffsetRequest(userText, input.installationId, parsedOffset.offsetMinutes);
+      return this.handleOffsetRequest(userText, input.installationId, parsedOffset.offsetMinutes, tone);
     }
 
     const classification = await this.resolveClassification(userText);
@@ -151,7 +195,10 @@ export class ChatService {
         updatedAt: nowIso()
       });
       return {
-        assistantText: confirmTaskOrMemoMessage(summary),
+        assistantText: confirmTaskOrMemoMessage(summary, {
+          tone,
+          seed: this.messageSeed(input.installationId, "confirm_task_or_memo", summary, ["タスク", "メモ"])
+        }),
         summarySlot: summary,
         actionType: "confirm",
         quickChoices: ["タスク", "メモ"],
@@ -172,7 +219,10 @@ export class ChatService {
         defaultDueTimeApplied: false
       });
       return {
-        assistantText: memoCategorySavedMessage(summary, memoCategoryLabel(category)),
+        assistantText: memoCategorySavedMessage(summary, memoCategoryLabel(category), {
+          tone,
+          seed: this.messageSeed(input.installationId, "memo_category_saved", summary)
+        }),
         summarySlot: summary,
         actionType: "saved",
         quickChoices: [],
@@ -180,13 +230,14 @@ export class ChatService {
       };
     }
 
-    return this.handleTaskCreation(userText, input.installationId, input.defaultDueTime);
+    return this.handleTaskCreation(userText, input.installationId, input.defaultDueTime, tone);
   }
 
   private async handleTaskCreation(
     originalText: string,
     installationId: string,
-    defaultDueTime?: string
+    defaultDueTime: string | undefined,
+    tone: ResponseTone
   ): Promise<ChatMessageResponse> {
     const dueResolution = await this.resolveDue(originalText, defaultDueTime);
     const parsedDue = dueResolution.parsedDue;
@@ -205,7 +256,10 @@ export class ChatService {
       });
 
       return {
-        assistantText: confirmDueChoiceMessage(summary),
+        assistantText: confirmDueChoiceMessage(summary, {
+          tone,
+          seed: this.messageSeed(installationId, "confirm_due_choice", summary, ["設定する", "設定しない", "後で設定する"])
+        }),
         summarySlot: summary,
         actionType: "confirm",
         quickChoices: ["設定する", "設定しない", "後で設定する"],
@@ -215,7 +269,10 @@ export class ChatService {
 
     if (isPast(parsedDue.dueAt)) {
       return {
-        assistantText: errorMessage("過去日時は設定できません。期限をもう一度指定してください。"),
+        assistantText: pastDueNotAllowedMessage({
+          tone,
+          seed: this.messageSeed(installationId, "past_due_not_allowed", summary)
+        }),
         summarySlot: summary,
         actionType: "error",
         quickChoices: [],
@@ -241,7 +298,10 @@ export class ChatService {
       });
 
       return {
-        assistantText: confirmDateOnlyTimeMessage(parsedDue.dateLabel),
+        assistantText: confirmDateOnlyTimeMessage(parsedDue.dateLabel, {
+          tone,
+          seed: this.messageSeed(installationId, "confirm_date_only_time", summary, ["○", "✕"])
+        }),
         summarySlot: summary,
         actionType: "confirm",
         quickChoices: ["○", "✕"],
@@ -276,23 +336,27 @@ export class ChatService {
   private async handlePending(
     context: ConversationContext,
     userInput: string,
-    input: ChatInput
+    input: ChatInput,
+    tone: ResponseTone
   ): Promise<ChatMessageResponse> {
     switch (context.pendingType) {
       case "task_or_memo_confirm":
-        return this.handlePendingTaskOrMemo(context, userInput, input);
+        return this.handlePendingTaskOrMemo(context, userInput, input, tone);
       case "due_choice":
-        return this.handlePendingDueChoice(context, userInput, input);
+        return this.handlePendingDueChoice(context, userInput, input, tone);
       case "due_time_confirm":
-        return this.handlePendingDueTime(context, userInput, input);
+        return this.handlePendingDueTime(context, userInput, input, tone);
       case "task_target_confirm":
-        return this.handlePendingTaskTarget(context, userInput, input);
+        return this.handlePendingTaskTarget(context, userInput, input, tone);
       case "memo_category_confirm":
-        return this.handlePendingMemoCategory(context, userInput, input);
+        return this.handlePendingMemoCategory(context, userInput, input, tone);
       default:
         await this.repo.clearConversationContext(input.installationId);
         return {
-          assistantText: errorMessage("確認状態が不正です。もう一度入力してください。"),
+          assistantText: invalidContextMessage({
+            tone,
+            seed: this.messageSeed(input.installationId, "invalid_context")
+          }),
           summarySlot: fallbackSummarySlot(userInput),
           actionType: "error",
           quickChoices: [],
@@ -304,14 +368,15 @@ export class ChatService {
   private async handlePendingTaskOrMemo(
     context: ConversationContext,
     userInput: string,
-    input: ChatInput
+    input: ChatInput,
+    tone: ResponseTone
   ): Promise<ChatMessageResponse> {
     const originalText = String(context.payload.originalText ?? userInput);
     const summary = String(context.payload.summary ?? (await this.safeSummary(originalText, "memo")));
 
     if (userInput.includes("タスク")) {
       await this.repo.clearConversationContext(input.installationId);
-      return this.handleTaskCreation(originalText, input.installationId, input.defaultDueTime);
+      return this.handleTaskCreation(originalText, input.installationId, input.defaultDueTime, tone);
     }
 
     if (userInput.includes("メモ")) {
@@ -332,7 +397,10 @@ export class ChatService {
       });
 
       return {
-        assistantText: `${summary}ですね。メモの分類を選んでください。${suggestionText}`,
+        assistantText: chooseMemoCategoryMessage(suggestedCategory ? memoCategoryLabel(suggestedCategory) : undefined, {
+          tone,
+          seed: this.messageSeed(input.installationId, "choose_memo_category", summary, [...QUICK_MEMO_CATEGORY_CHOICES])
+        }),
         summarySlot: summary,
         actionType: "confirm",
         quickChoices: [...QUICK_MEMO_CATEGORY_CHOICES],
@@ -341,7 +409,10 @@ export class ChatService {
     }
 
     return {
-      assistantText: "タスクかメモかを選んでください。（タスク / メモ）",
+      assistantText: chooseTaskOrMemoMessage({
+        tone,
+        seed: this.messageSeed(input.installationId, "choose_task_or_memo", summary, ["タスク", "メモ"])
+      }),
       summarySlot: summary,
       actionType: "confirm",
       quickChoices: ["タスク", "メモ"],
@@ -352,7 +423,8 @@ export class ChatService {
   private async handlePendingMemoCategory(
     context: ConversationContext,
     userInput: string,
-    input: ChatInput
+    input: ChatInput,
+    tone: ResponseTone
   ): Promise<ChatMessageResponse> {
     const originalText = String(context.payload.originalText ?? "");
     const summary = String(context.payload.summary ?? (await this.safeSummary(originalText, "memo")));
@@ -362,7 +434,10 @@ export class ChatService {
       const suggestedCategory = context.payload.suggestedCategory as MemoCategory | undefined;
       const suggestionText = suggestedCategory ? ` 候補は${memoCategoryLabel(suggestedCategory)}です。` : "";
       return {
-        assistantText: `メモの分類を選んでください。（やりたいこと / アイデア / メモ（雑多））${suggestionText}`,
+        assistantText: chooseMemoCategoryMessage(suggestedCategory ? memoCategoryLabel(suggestedCategory) : undefined, {
+          tone,
+          seed: this.messageSeed(input.installationId, "choose_memo_category", summary, [...QUICK_MEMO_CATEGORY_CHOICES])
+        }),
         summarySlot: summary,
         actionType: "confirm",
         quickChoices: [...QUICK_MEMO_CATEGORY_CHOICES],
@@ -382,7 +457,12 @@ export class ChatService {
     });
 
     return {
-      assistantText: memoSavedMessage({ summary, detail: `${memoCategoryLabel(category)}として保存しました。` }),
+      assistantText: memoSavedMessage({
+        summary,
+        detail: `${memoCategoryLabel(category)}として保存しました。`,
+        tone,
+        seed: this.messageSeed(input.installationId, "memo_saved", summary)
+      }),
       summarySlot: summary,
       actionType: "saved",
       quickChoices: [],
@@ -414,7 +494,8 @@ export class ChatService {
   private async handlePendingDueChoice(
     context: ConversationContext,
     userInput: string,
-    input: ChatInput
+    input: ChatInput,
+    tone: ResponseTone
   ): Promise<ChatMessageResponse> {
     const originalText = String(context.payload.originalText ?? userInput);
     const summary = String(context.payload.summary ?? fallbackSummarySlot(originalText));
@@ -425,7 +506,10 @@ export class ChatService {
       const parsedDue = dueResolution.parsedDue;
       if (dueResolution.forceConfirmation || !parsedDue || isPast(parsedDue.dueAt)) {
         return {
-          assistantText: "期限を日時で解釈できませんでした。例: 来週金曜15時",
+          assistantText: dueParseFailedMessage({
+            tone,
+            seed: this.messageSeed(input.installationId, "due_parse_failed", summary)
+          }),
           summarySlot: summary,
           actionType: "confirm",
           quickChoices: [],
@@ -449,9 +533,13 @@ export class ChatService {
         });
 
         return {
-          assistantText: confirmDateOnlyTimeMessage(parsedDue.dateLabel),
+          assistantText: confirmDateOnlyTimeMessage(parsedDue.dateLabel, {
+          tone,
+          seed: this.messageSeed(input.installationId, "confirm_date_only_time", summary, ["○", "✕"])
+        }),
           summarySlot: summary,
           actionType: "confirm",
+          confirmationType: "due_time_confirm",
           quickChoices: ["○", "✕"],
           affectedTaskIds: []
         };
@@ -470,7 +558,15 @@ export class ChatService {
       await this.createReminderForTask(task, parsedDue.dueAt, 0);
 
       return {
-        assistantText: taskSavedMessage({ summary, detail: `${parsedDue.dateLabel}にリマインドします。` }),
+        assistantText: taskSavedMessage({
+          summary,
+          detail: detailRemindAt(parsedDue.dateLabel, {
+            tone,
+            seed: this.messageSeed(input.installationId, "detail_remind_at", summary)
+          }),
+          tone,
+          seed: this.messageSeed(input.installationId, "task_saved", summary)
+        }),
         summarySlot: summary,
         actionType: "saved",
         quickChoices: [],
@@ -486,9 +582,13 @@ export class ChatService {
         expiresAt: new Date(Date.now() + CONTEXT_TTL_MS).toISOString()
       });
       return {
-        assistantText: askDueInputMessage(summary),
+        assistantText: askDueInputMessage(summary, {
+          tone,
+          seed: this.messageSeed(input.installationId, "ask_due_input", summary)
+        }),
         summarySlot: summary,
         actionType: "confirm",
+        confirmationType: "due_choice",
         quickChoices: [],
         affectedTaskIds: []
       };
@@ -506,7 +606,15 @@ export class ChatService {
         defaultDueTimeApplied: false
       });
       return {
-        assistantText: taskSavedMessage({ summary, detail: "期日なしで登録しました。" }),
+        assistantText: taskSavedMessage({
+          summary,
+          detail: detailNoDue({
+            tone,
+            seed: this.messageSeed(input.installationId, "detail_no_due", summary)
+          }),
+          tone,
+          seed: this.messageSeed(input.installationId, "task_saved", summary)
+        }),
         summarySlot: summary,
         actionType: "saved",
         quickChoices: [],
@@ -526,7 +634,15 @@ export class ChatService {
         defaultDueTimeApplied: false
       });
       return {
-        assistantText: taskSavedMessage({ summary, detail: "後で期日設定するタスクとして保存しました。" }),
+        assistantText: taskSavedMessage({
+          summary,
+          detail: detailPendingDue({
+            tone,
+            seed: this.messageSeed(input.installationId, "detail_pending_due", summary)
+          }),
+          tone,
+          seed: this.messageSeed(input.installationId, "task_saved", summary)
+        }),
         summarySlot: summary,
         actionType: "saved",
         quickChoices: [],
@@ -535,7 +651,10 @@ export class ChatService {
     }
 
     return {
-      assistantText: "期日の選択肢を選んでください。（設定する / 設定しない / 後で設定する）",
+      assistantText: chooseDueChoiceMessage({
+        tone,
+        seed: this.messageSeed(input.installationId, "choose_due_choice", summary, ["設定する", "設定しない", "後で設定する"])
+      }),
       summarySlot: summary,
       actionType: "confirm",
       quickChoices: ["設定する", "設定しない", "後で設定する"],
@@ -546,7 +665,8 @@ export class ChatService {
   private async handlePendingDueTime(
     context: ConversationContext,
     userInput: string,
-    input: ChatInput
+    input: ChatInput,
+    tone: ResponseTone
   ): Promise<ChatMessageResponse> {
     const originalText = String(context.payload.originalText ?? userInput);
     const summary = String(context.payload.summary ?? fallbackSummarySlot(originalText));
@@ -557,7 +677,10 @@ export class ChatService {
       const parsedDue = dueResolution.parsedDue;
       if (dueResolution.forceConfirmation || !parsedDue || !parsedDue.timeProvided || isPast(parsedDue.dueAt)) {
         return {
-          assistantText: "時刻を解釈できませんでした。例: 18時 / 18:30",
+          assistantText: timeParseFailedMessage({
+            tone,
+            seed: this.messageSeed(input.installationId, "time_parse_failed", summary)
+          }),
           summarySlot: summary,
           actionType: "confirm",
           quickChoices: [],
@@ -578,7 +701,15 @@ export class ChatService {
       await this.createReminderForTask(task, parsedDue.dueAt, 0);
 
       return {
-        assistantText: taskSavedMessage({ summary, detail: `${parsedDue.dateLabel}に設定しました。` }),
+        assistantText: taskSavedMessage({
+          summary,
+          detail: detailSetAt(parsedDue.dateLabel, {
+            tone,
+            seed: this.messageSeed(input.installationId, "detail_set_at", summary)
+          }),
+          tone,
+          seed: this.messageSeed(input.installationId, "task_saved", summary)
+        }),
         summarySlot: summary,
         actionType: "saved",
         quickChoices: [],
@@ -590,7 +721,10 @@ export class ChatService {
       const dueAt = context.proposedDueAt;
       if (!dueAt || isPast(dueAt)) {
         return {
-          assistantText: "提案された期限が無効です。もう一度入力してください。",
+          assistantText: invalidProposedDueMessage({
+            tone,
+            seed: this.messageSeed(input.installationId, "invalid_proposed_due", summary)
+          }),
           summarySlot: summary,
           actionType: "error",
           quickChoices: [],
@@ -611,7 +745,15 @@ export class ChatService {
       await this.createReminderForTask(task, dueAt, 0);
 
       return {
-        assistantText: taskSavedMessage({ summary, detail: "提案した時刻で設定しました。" }),
+        assistantText: taskSavedMessage({
+          summary,
+          detail: detailAppliedSuggestedTime({
+            tone,
+            seed: this.messageSeed(input.installationId, "detail_applied_suggested_time", summary)
+          }),
+          tone,
+          seed: this.messageSeed(input.installationId, "task_saved", summary)
+        }),
         summarySlot: summary,
         actionType: "saved",
         quickChoices: [],
@@ -627,18 +769,26 @@ export class ChatService {
         updatedAt: nowIso()
       });
       return {
-        assistantText: "希望する時刻を入力してください。例: 18時 / 18:30",
+        assistantText: askCustomTimeMessage({
+          tone,
+          seed: this.messageSeed(input.installationId, "ask_custom_time", summary)
+        }),
         summarySlot: summary,
         actionType: "confirm",
+        confirmationType: "due_time_confirm",
         quickChoices: [],
         affectedTaskIds: []
       };
     }
 
     return {
-      assistantText: "○ か ✕ を選択してください。",
+      assistantText: chooseCircleCrossMessage({
+        tone,
+        seed: this.messageSeed(input.installationId, "choose_circle_cross", summary, ["○", "✕"])
+      }),
       summarySlot: summary,
       actionType: "confirm",
+      confirmationType: "due_time_confirm",
       quickChoices: ["○", "✕"],
       affectedTaskIds: []
     };
@@ -647,7 +797,8 @@ export class ChatService {
   private async handlePendingTaskTarget(
     context: ConversationContext,
     userInput: string,
-    input: ChatInput
+    input: ChatInput,
+    tone: ResponseTone
   ): Promise<ChatMessageResponse> {
     const offsetMinutes = context.proposedOffsetMinutes ?? 0;
     const candidateIds = context.candidateTaskIds;
@@ -659,7 +810,7 @@ export class ChatService {
       const candidates = tasks.filter((task) => task.title.includes(userInput));
       if (candidates.length === 1) {
         await this.repo.clearConversationContext(input.installationId);
-        return this.applyOffsetToTask(candidates[0], offsetMinutes);
+        return this.applyOffsetToTask(candidates[0], offsetMinutes, tone);
       }
       if (candidates.length > 1) {
         const first = candidates[0];
@@ -671,18 +822,26 @@ export class ChatService {
           expiresAt: new Date(Date.now() + CONTEXT_TTL_MS).toISOString()
         });
         return {
-          assistantText: askTargetConfirmMessage(first.title),
+          assistantText: askTargetConfirmMessage(first.title, {
+            tone,
+            seed: this.messageSeed(input.installationId, "ask_target_confirm", first.title, ["○", "✕"])
+          }),
           summarySlot: first.title,
           actionType: "confirm",
+          confirmationType: "task_target_confirm",
           quickChoices: ["○", "✕"],
           affectedTaskIds: []
         };
       }
 
       return {
-        assistantText: "対象タスクを特定できませんでした。タスク名をもう少し詳しく入力してください。",
+        assistantText: targetResolveFailedMessage({
+          tone,
+          seed: this.messageSeed(input.installationId, "target_resolve_failed")
+        }),
         summarySlot: "",
         actionType: "confirm",
+        confirmationType: "task_target_confirm",
         quickChoices: [],
         affectedTaskIds: []
       };
@@ -693,7 +852,10 @@ export class ChatService {
     if (!selectedTask) {
       await this.repo.clearConversationContext(input.installationId);
       return {
-        assistantText: errorMessage("対象タスクが見つかりません。"),
+        assistantText: errorMessage("対象タスクが見つかりません。", {
+          tone,
+          seed: this.messageSeed(input.installationId, "target_missing")
+        }),
         summarySlot: "",
         actionType: "error",
         quickChoices: [],
@@ -703,7 +865,7 @@ export class ChatService {
 
     if (userInput === "○") {
       await this.repo.clearConversationContext(input.installationId);
-      return this.applyOffsetToTask(selectedTask, offsetMinutes);
+      return this.applyOffsetToTask(selectedTask, offsetMinutes, tone);
     }
 
     if (userInput === "✕") {
@@ -714,18 +876,26 @@ export class ChatService {
         expiresAt: new Date(Date.now() + CONTEXT_TTL_MS).toISOString()
       });
       return {
-        assistantText: "対象タスク名を入力してください。",
+        assistantText: askTargetNameMessage({
+          tone,
+          seed: this.messageSeed(input.installationId, "ask_target_name", selectedTask.title)
+        }),
         summarySlot: selectedTask.title,
         actionType: "confirm",
+        confirmationType: "task_target_confirm",
         quickChoices: [],
         affectedTaskIds: []
       };
     }
 
     return {
-      assistantText: "○ か ✕ を選択してください。",
+      assistantText: chooseCircleCrossMessage({
+        tone,
+        seed: this.messageSeed(input.installationId, "choose_circle_cross", selectedTask.title, ["○", "✕"])
+      }),
       summarySlot: selectedTask.title,
       actionType: "confirm",
+      confirmationType: "task_target_confirm",
       quickChoices: ["○", "✕"],
       affectedTaskIds: []
     };
@@ -734,12 +904,16 @@ export class ChatService {
   private async handleOffsetRequest(
     userText: string,
     installationId: string,
-    offsetMinutes: number
+    offsetMinutes: number,
+    tone: ResponseTone
   ): Promise<ChatMessageResponse> {
     const tasks = await this.repo.listActiveScheduledTasks(installationId);
     if (tasks.length === 0) {
       return {
-        assistantText: "対象になる期限付きタスクがありません。先にタスクを登録してください。",
+        assistantText: noScheduledTaskMessage({
+          tone,
+          seed: this.messageSeed(installationId, "no_scheduled_task")
+        }),
         summarySlot: "",
         actionType: "error",
         quickChoices: [],
@@ -748,12 +922,12 @@ export class ChatService {
     }
 
     if (tasks.length === 1) {
-      return this.applyOffsetToTask(tasks[0], offsetMinutes);
+      return this.applyOffsetToTask(tasks[0], offsetMinutes, tone);
     }
 
     const exact = tasks.find((task) => userText.includes(task.title));
     if (exact) {
-      return this.applyOffsetToTask(exact, offsetMinutes);
+      return this.applyOffsetToTask(exact, offsetMinutes, tone);
     }
 
     await this.setContext({
@@ -768,21 +942,28 @@ export class ChatService {
     });
 
     return {
-      assistantText: askTargetConfirmMessage(tasks[0].title),
+      assistantText: askTargetConfirmMessage(tasks[0].title, {
+        tone,
+        seed: this.messageSeed(installationId, "ask_target_confirm", tasks[0].title, ["○", "✕"])
+      }),
       summarySlot: tasks[0].title,
       actionType: "confirm",
+      confirmationType: "task_target_confirm",
       quickChoices: ["○", "✕"],
       affectedTaskIds: []
     };
   }
 
-  private async applyOffsetToTask(task: Task, offsetMinutes: number): Promise<ChatMessageResponse> {
+  private async applyOffsetToTask(task: Task, offsetMinutes: number, tone: ResponseTone): Promise<ChatMessageResponse> {
     const reminders = await this.repo.listRemindersByTask(task.id);
     let reminder = reminders.find((item) => item.status === "active") ?? null;
 
     if (!task.dueAt) {
       return {
-        assistantText: errorMessage("このタスクには期限がありません。"),
+        assistantText: missingDueForTaskMessage({
+          tone,
+          seed: this.messageSeed(task.installationId, "missing_due_for_task", task.title)
+        }),
         summarySlot: task.title,
         actionType: "error",
         quickChoices: [],
@@ -815,7 +996,10 @@ export class ChatService {
     }
 
     return {
-      assistantText: `${task.title}のリマインドを${offsetMinutes}分前に調整しました。`,
+      assistantText: reminderAdjustedMessage(task.title, offsetMinutes, {
+        tone,
+        seed: this.messageSeed(task.installationId, "reminder_adjusted", task.title)
+      }),
       summarySlot: task.title,
       actionType: "saved",
       quickChoices: [],
@@ -831,12 +1015,15 @@ export class ChatService {
     );
   }
 
-  private async handleReclassify(text: string, installationId: string): Promise<ChatMessageResponse> {
+  private async handleReclassify(text: string, installationId: string, tone: ResponseTone): Promise<ChatMessageResponse> {
     const tasks = await this.repo.listTasks(installationId);
     const latest = tasks[0];
     if (!latest) {
       return {
-        assistantText: "再分類対象が見つかりませんでした。",
+        assistantText: reclassifyTargetMissingMessage({
+          tone,
+          seed: this.messageSeed(installationId, "reclassify_target_missing")
+        }),
         summarySlot: "",
         actionType: "error",
         quickChoices: [],
@@ -854,7 +1041,10 @@ export class ChatService {
       };
       await this.repo.updateTask(updated);
       return {
-        assistantText: `${updated.title}をタスクに変更しました。`,
+        assistantText: reclassifiedToTaskMessage(updated.title, {
+          tone,
+          seed: this.messageSeed(installationId, "reclassified_to_task", updated.title)
+        }),
         summarySlot: updated.title,
         actionType: "saved",
         quickChoices: [],
@@ -873,7 +1063,10 @@ export class ChatService {
       };
       await this.repo.updateTask(updated);
       return {
-        assistantText: `${updated.title}をメモに変更しました。`,
+        assistantText: reclassifiedToMemoMessage(updated.title, {
+          tone,
+          seed: this.messageSeed(installationId, "reclassified_to_memo", updated.title)
+        }),
         summarySlot: updated.title,
         actionType: "saved",
         quickChoices: [],
@@ -882,7 +1075,10 @@ export class ChatService {
     }
 
     return {
-      assistantText: "再分類の意図を解釈できませんでした。",
+      assistantText: reclassifyIntentUnknownMessage({
+        tone,
+        seed: this.messageSeed(installationId, "reclassify_intent_unknown")
+      }),
       summarySlot: latest.title,
       actionType: "error",
       quickChoices: [],
@@ -1130,5 +1326,23 @@ export class ChatService {
     }
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

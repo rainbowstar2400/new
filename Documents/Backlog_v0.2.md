@@ -43,14 +43,13 @@
 | --- | --- | --- | --- | --- | --- |
 | P1-01 | Reminder | 時刻未指定リマインド改善 | 時刻未指定時の確認文統一、既定時刻提案と `○/✕` 導線を強化 | P0-09, P0-13 | UC-05/UC-08 で提案内容が明確で、`✕` 後のみ自然言語入力へ遷移する |
 | P1-02 | Logic | 相対日付解釈精度強化 | `OPENAI_DUE_PARSE_MODE=ai-first`、AI解釈 + 厳格検証、検証失敗時確認戻し | P0-11 | AI解釈の検証失敗で自動保存されず `due_choice` に戻る |
-| P1-03 | UX/API | 確認UIの操作性改善 | `ChatMessageResponse` に `inputMode` / `confirmationType` / 
-egativeChoice` を追加しWebで入力制御 | P0-05, P0-19 | `choice_only` で自由入力不可、`choice_then_text_on_negative` で `✕` 後のみ自由入力可能 |
+| P1-03 | UX/API | 確認UIの操作性改善 | `ChatMessageResponse` に `inputMode` / `confirmationType` / `negativeChoice` を追加しWebで入力制御 | P0-05, P0-19 | `choice_only` で自由入力不可、`choice_then_text_on_negative` で `✕` 後のみ自由入力可能 |
 
 ## 4. P2 バックログ（品質向上）
 
 | ID | 種別 | タイトル | 主な内容 | 依存 | 受け入れ条件 |
 | --- | --- | --- | --- | --- | --- |
-| P2-01 | NLG | 応答文チューニング | 文体一貫性・自然さ改善 | P0-16 | 会話品質KPI改善 |
+| P2-01 | NLG/UX | 応答文チューニング + 文体設定 | `polite/friendly/concise` 切替、決定論ローテーション、ローカル保存、`responseTone` 送信 | P0-16, P1-03 | 保存/確認/エラー応答で文体切替が効き、再起動後も設定保持 |
 | P2-02 | Logic | 分類境界ケース拡張 | タスク/メモ/メモ分類の曖昧境界を強化し、メモ選択後カテゴリ確認を必須化 | P0-17 | 分類誤りと誤保存の低減 |
 | P2-03 | UX | 一覧画面微調整 | `!期日設定` などの視認性改善 | P0-08 | 視認性評価改善 |
 
@@ -72,6 +71,3 @@ egativeChoice` を追加しWebで入力制御 | P0-05, P0-19 | `choice_only` で
 - P0-01〜P0-21 完了
 - PRD v0.2 の主要受け入れ基準を満たす
 - 主要E2Eが緑化し、実機で通知導線を確認できる
-
-
-

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import type { Task } from "@new/shared";
+import type { ResponseTone, Task } from "@new/shared";
 import {
   fetchTasks,
   registerInstallation,
@@ -19,7 +19,14 @@ type ChatMessage = {
 
 const SESSION_KEY = "secretary_session";
 const DEFAULT_DUE_KEY = "default_due_time";
+const RESPONSE_TONE_KEY = "response_tone";
 const TASK_ID_QUERY_KEY = "taskId";
+
+const RESPONSE_TONE_OPTIONS: Array<{ value: ResponseTone; label: string }> = [
+  { value: "polite", label: "丁寧" },
+  { value: "friendly", label: "フレンドリー" },
+  { value: "concise", label: "簡潔" }
+];
 
 const DEFAULT_CHAT_CONTROL: ChatControlState = {
   inputMode: "free_text",
@@ -47,6 +54,15 @@ function saveStoredSession(session: DeviceSession): void {
 
 function loadDefaultDueTime(): string {
   return localStorage.getItem(DEFAULT_DUE_KEY) ?? "09:00";
+}
+
+function isResponseTone(value: string): value is ResponseTone {
+  return value === "polite" || value === "friendly" || value === "concise";
+}
+
+function loadResponseTone(): ResponseTone {
+  const raw = localStorage.getItem(RESPONSE_TONE_KEY);
+  return raw && isResponseTone(raw) ? raw : "polite";
 }
 
 function readTaskIdFromQuery(): string | null {
@@ -121,6 +137,7 @@ export default function App() {
   const [chatControl, setChatControl] = useState<ChatControlState>(DEFAULT_CHAT_CONTROL);
   const [inputText, setInputText] = useState("");
   const [defaultDueTime, setDefaultDueTime] = useState(loadDefaultDueTime());
+  const [responseTone, setResponseTone] = useState<ResponseTone>(loadResponseTone());
   const [busy, setBusy] = useState(false);
   const [statusText, setStatusText] = useState("起動中...");
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(readTaskIdFromQuery());
@@ -197,7 +214,8 @@ export default function App() {
 
       const response = await sendChatMessage(session, {
         ...payload,
-        defaultDueTime
+        defaultDueTime,
+        responseTone
       });
 
       setMessages((prev) => [
@@ -287,6 +305,11 @@ export default function App() {
     localStorage.setItem(DEFAULT_DUE_KEY, next);
   }
 
+  function saveResponseTone(next: ResponseTone): void {
+    setResponseTone(next);
+    localStorage.setItem(RESPONSE_TONE_KEY, next);
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -356,6 +379,17 @@ export default function App() {
               value={defaultDueTime}
               onChange={(event) => saveDefaultDueTime(event.target.value)}
             />
+          </label>
+          <label className="label">
+            応答文の文体
+            <select
+              value={responseTone}
+              onChange={(event) => saveResponseTone(event.target.value as ResponseTone)}
+            >
+              {RESPONSE_TONE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
           </label>
           <button type="button" onClick={() => void onPushSubscribe()}>
             通知を有効化

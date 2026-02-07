@@ -74,10 +74,24 @@ Labels: priority:P0|P1|P2, type:Data|Infra|API|Backend|Logic|UI|Reminder|NLG|Tes
 
 | ID | タイトル | Labels（推奨） |
 | --- | --- | --- |
-| P2-01 | 応答文チューニング | `priority:P2`, `type:NLG`, `milestone:MVP-v0.2` |
+| P2-01 | 応答文チューニング + 文体設定 | `priority:P2`, `type:NLG`, `milestone:MVP-v0.2` |
 | P2-02 | 分類境界ケース拡張 | `priority:P2`, `type:Logic`, `milestone:MVP-v0.2` |
 | P2-03 | 一覧画面微調整 | `priority:P2`, `type:UX`, `milestone:MVP-v0.2` |
 
+### P2-01 追加Scope（文体設定）
+
+- 文体オプション `polite/friendly/concise` をUI設定として追加
+- 文体設定は端末ローカル保存（サーバー永続化なし）
+- `/v1/chat/messages` リクエストへ `responseTone` を付与
+- APIは `responseTone` 未指定時に `polite` を既定適用
+- 応答テンプレートは決定論ローテーションで文面を選択
+
+### P2-01 Acceptance Criteria
+
+- 設定UIで `丁寧/フレンドリー/簡潔` を切り替えられる
+- 保存/確認/エラー応答すべてが文体切替対象になる
+- 同じseedで同じ文面、seed差分でローテーション変化が再現できる
+- 既存の `inputMode/confirmationType/negativeChoice` 挙動を壊さない
 
 ### P2-02 追加Scope（分類中心）
 
@@ -103,8 +117,3 @@ Labels: priority:P0|P1|P2, type:Data|Infra|API|Backend|Logic|UI|Reminder|NLG|Tes
 - `type:UX`
 - `type:Job`
 - `milestone:MVP-v0.2`
-
-
-
-
-
