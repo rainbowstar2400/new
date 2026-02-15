@@ -375,6 +375,35 @@ describe("chat api integration", () => {
     expect(list.json().items[0].memoCategory).toBe("want");
   });
 
+  it("classifies short desire phrase with task noun as memo want", async () => {
+    const repo = new MemoryRepository();
+    const app = await createServer({
+      repo,
+      startScheduler: false,
+      summaryProvider: async () => "買い物したい"
+    });
+
+    const reg = await app.inject({ method: "POST", url: "/v1/installations/register", payload: {} });
+    const session = reg.json();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/chat/messages",
+      headers: { authorization: `Bearer ${session.accessToken}` },
+      payload: { text: "買い物したい" }
+    });
+
+    expect(response.json().actionType).toBe("saved");
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/tasks",
+      headers: { authorization: `Bearer ${session.accessToken}` }
+    });
+
+    expect(list.json().items[0].kind).toBe("memo");
+    expect(list.json().items[0].memoCategory).toBe("want");
+  });
   it("asks target confirmation when multiple tasks exist (UC-17)", async () => {
     const repo = new MemoryRepository();
     const app = await createServer({
@@ -495,4 +524,5 @@ describe("chat api integration", () => {
     expect(friendly.json().assistantText).not.toBe(polite.json().assistantText);
   });
 });
+
 

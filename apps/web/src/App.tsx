@@ -17,15 +17,32 @@ type ChatMessage = {
   text: string;
 };
 
+type TabKey = "chat" | "items" | "settings";
+type ItemFilter = "all" | "memo" | "task";
+
 const SESSION_KEY = "secretary_session";
 const DEFAULT_DUE_KEY = "default_due_time";
 const RESPONSE_TONE_KEY = "response_tone";
+const ACTIVE_TAB_KEY = "active_tab_v03";
+const ITEMS_FILTER_KEY = "items_filter_v03";
 const TASK_ID_QUERY_KEY = "taskId";
 
 const RESPONSE_TONE_OPTIONS: Array<{ value: ResponseTone; label: string }> = [
   { value: "polite", label: "丁寧" },
   { value: "friendly", label: "フレンドリー" },
   { value: "concise", label: "簡潔" }
+];
+
+const ITEM_FILTER_OPTIONS: Array<{ value: ItemFilter; label: string }> = [
+  { value: "all", label: "すべて" },
+  { value: "memo", label: "メモのみ" },
+  { value: "task", label: "タスクのみ" }
+];
+
+const TAB_OPTIONS: Array<{ value: TabKey; label: string }> = [
+  { value: "chat", label: "チャット" },
+  { value: "items", label: "メモ・タスク" },
+  { value: "settings", label: "設定" }
 ];
 
 const DEFAULT_CHAT_CONTROL: ChatControlState = {
@@ -63,6 +80,24 @@ function isResponseTone(value: string): value is ResponseTone {
 function loadResponseTone(): ResponseTone {
   const raw = localStorage.getItem(RESPONSE_TONE_KEY);
   return raw && isResponseTone(raw) ? raw : "polite";
+}
+
+function isTabKey(value: string): value is TabKey {
+  return value === "chat" || value === "items" || value === "settings";
+}
+
+function loadActiveTab(): TabKey {
+  const raw = localStorage.getItem(ACTIVE_TAB_KEY);
+  return raw && isTabKey(raw) ? raw : "chat";
+}
+
+function isItemFilter(value: string): value is ItemFilter {
+  return value === "all" || value === "memo" || value === "task";
+}
+
+function loadItemsFilter(): ItemFilter {
+  const raw = localStorage.getItem(ITEMS_FILTER_KEY);
+  return raw && isItemFilter(raw) ? raw : "all";
 }
 
 function readTaskIdFromQuery(): string | null {
@@ -124,6 +159,12 @@ function choiceHelpText(choices: string[]): string | null {
   return null;
 }
 
+function emptyStateText(filter: ItemFilter): string {
+  if (filter === "memo") return "メモはまだありません。チャットから追加してください。";
+  if (filter === "task") return "タスクはまだありません。チャットで登録を始めましょう。";
+  return "まだ項目がありません。チャットから最初の1件を登録してください。";
+}
+
 async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!("serviceWorker" in navigator)) return null;
   return navigator.serviceWorker.register("/sw.js");
@@ -138,6 +179,8 @@ export default function App() {
   const [inputText, setInputText] = useState("");
   const [defaultDueTime, setDefaultDueTime] = useState(loadDefaultDueTime());
   const [responseTone, setResponseTone] = useState<ResponseTone>(loadResponseTone());
+  const [activeTab, setActiveTab] = useState<TabKey>(loadActiveTab());
+  const [itemsFilter, setItemsFilter] = useState<ItemFilter>(loadItemsFilter());
   const [busy, setBusy] = useState(false);
   const [statusText, setStatusText] = useState("起動中...");
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(readTaskIdFromQuery());
@@ -175,12 +218,26 @@ export default function App() {
       return;
     }
 
+    setActiveTab("items");
+    localStorage.setItem(ACTIVE_TAB_KEY, "items");
+    if (itemsFilter !== "all") {
+      setItemsFilter("all");
+      localStorage.setItem(ITEMS_FILTER_KEY, "all");
+    }
     setStatusText(`通知から「${target.title}」を表示中`);
     requestAnimationFrame(() => {
       const node = document.querySelector<HTMLElement>(`[data-task-id="${focusedTaskId}"]`);
-      node?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (node && typeof node.scrollIntoView === "function") {
+        node.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
     });
-  }, [focusedTaskId, tasks]);
+  }, [focusedTaskId, itemsFilter, tasks]);
+
+  useEffect(() => {
+    if (!focusedTaskId) return;
+    setActiveTab("items");
+    localStorage.setItem(ACTIVE_TAB_KEY, "items");
+  }, [focusedTaskId]);
 
   const sortedTasks = useMemo(() => {
     const ordered = [...tasks].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -192,6 +249,11 @@ export default function App() {
       return 0;
     });
   }, [tasks, focusedTaskId]);
+
+  const filteredTasks = useMemo(() => {
+    if (itemsFilter === "all") return sortedTasks;
+    return sortedTasks.filter((task) => task.kind === itemsFilter);
+  }, [sortedTasks, itemsFilter]);
 
   const quickChoiceHelp = useMemo(() => choiceHelpText(quickChoices), [quickChoices]);
   const chatModeHint = useMemo(() => chatControlHint(chatControl), [chatControl]);
@@ -310,113 +372,186 @@ export default function App() {
     localStorage.setItem(RESPONSE_TONE_KEY, next);
   }
 
+  function saveActiveTab(next: TabKey): void {
+    setActiveTab(next);
+    localStorage.setItem(ACTIVE_TAB_KEY, next);
+  }
+
+  function saveItemsFilter(next: ItemFilter): void {
+    setItemsFilter(next);
+    localStorage.setItem(ITEMS_FILTER_KEY, next);
+  }
+
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Online MVP v0.2</p>
+    <div className="v03-shell">
+      <header className="v03-header">
+        <div className="v03-header-copy">
+          <p className="v03-kicker">Online MVP v0.3</p>
           <h1>自分専用秘書PWA</h1>
         </div>
-        <p>{statusText}</p>
+        <p className="v03-status">{statusText}</p>
       </header>
 
       {focusedTaskId ? (
-        <section className="focus-banner">
-          <p>通知から開いたタスクを上部表示しています。</p>
+        <section className="v03-focus-banner" role="status">
+          <p>通知から開いたタスクを優先表示しています。</p>
           <button type="button" onClick={onClearFocusTask}>表示を解除</button>
         </section>
       ) : null}
 
-      <main className="layout">
-        <section className="panel chat-panel">
-          <h2>会話入力</h2>
-          <p className="muted">会話で入力し、確認は選択肢で確定します。</p>
+      <main className="v03-main" data-active-tab={activeTab}>
+        <section className={`v03-screen ${activeTab === "chat" ? "is-active" : "is-hidden"}`} aria-label="チャット画面">
+          <div className="v03-card chat-stage">
+            <div className="v03-card-head">
+              <h2>チャット</h2>
+              <p>会話で登録し、確認は選択肢で確定します。</p>
+            </div>
 
-          <div className="messages">
-            {messages.length === 0 ? <p className="muted">最初の入力を送信してください。</p> : null}
-            {messages.map((message) => (
-              <div key={message.id} className={`message ${message.role}`}>
-                {message.text}
-              </div>
-            ))}
-          </div>
+            <div className="v03-message-log" aria-live="polite">
+              {messages.length === 0 ? <p className="v03-muted">最初の入力を送信してください。</p> : null}
+              {messages.map((message) => (
+                <article key={message.id} className={`v03-bubble ${message.role}`}>
+                  {message.text}
+                </article>
+              ))}
+            </div>
 
-          <div className="choices" aria-live="polite">
-            {quickChoices.map((choice) => (
-              <button
-                key={choice}
-                type="button"
-                className={`choice-btn ${choiceTone(choice)}`}
-                disabled={busy}
-                onClick={() => void postMessage({ selectedChoice: choice })}
-              >
-                {choice}
+            <div className="v03-choice-row" aria-live="polite">
+              {quickChoices.map((choice) => (
+                <button
+                  key={choice}
+                  type="button"
+                  className={`v03-choice ${choiceTone(choice)}`}
+                  disabled={busy}
+                  onClick={() => void postMessage({ selectedChoice: choice })}
+                >
+                  {choice}
+                </button>
+              ))}
+            </div>
+            {quickChoiceHelp ? <p className="v03-choice-help">{quickChoiceHelp}</p> : null}
+            {chatModeHint ? <p className="v03-input-hint">{chatModeHint}</p> : null}
+
+            <form className="v03-chat-form" onSubmit={submitInput}>
+              <textarea
+                value={inputText}
+                onChange={(event) => setInputText(event.target.value)}
+                placeholder="例: 明日9時にAさんへ連絡"
+                disabled={busy || !canTypeText}
+              />
+              <button type="submit" disabled={busy || !session || !canTypeText || !inputText.trim()}>
+                送信
               </button>
-            ))}
+            </form>
           </div>
-          {quickChoiceHelp ? <p className="choice-hint">{quickChoiceHelp}</p> : null}
-          {chatModeHint ? <p className="input-lock-hint">{chatModeHint}</p> : null}
-
-          <form className="chat-form" onSubmit={submitInput}>
-            <textarea
-              value={inputText}
-              onChange={(event) => setInputText(event.target.value)}
-              placeholder="例: 明日9時にAさんへ連絡"
-              disabled={busy || !canTypeText}
-            />
-            <button type="submit" disabled={busy || !session || !canTypeText || !inputText.trim()}>
-              送信
-            </button>
-          </form>
         </section>
 
-        <section className="panel side-panel">
-          <h2>設定</h2>
-          <label className="label">
-            既定時刻
-            <input
-              type="time"
-              value={defaultDueTime}
-              onChange={(event) => saveDefaultDueTime(event.target.value)}
-            />
-          </label>
-          <label className="label">
-            応答文の文体
-            <select
-              value={responseTone}
-              onChange={(event) => saveResponseTone(event.target.value as ResponseTone)}
-            >
-              {RESPONSE_TONE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </label>
-          <button type="button" onClick={() => void onPushSubscribe()}>
-            通知を有効化
-          </button>
+        <section className={`v03-screen ${activeTab === "items" ? "is-active" : "is-hidden"}`} aria-label="メモ・タスク画面">
+          <div className="v03-card items-stage">
+            <div className="v03-card-head">
+              <h2>メモ・タスク</h2>
+              <p>登録済み項目の確認と再分類を行います。</p>
+            </div>
 
-          <h2>タスク・メモ一覧</h2>
-          <ul className="task-list">
-            {sortedTasks.map((task) => (
-              <li
-                key={task.id}
-                data-task-id={task.id}
-                className={`task-item ${task.id === focusedTaskId ? "focused" : ""}`}
-              >
-                <p className="task-title">{task.title}</p>
-                <div className="meta-row">
-                  <span className={`badge ${task.kind}`}>{taskKindLabel(task)}</span>
-                  {task.memoCategory ? <span className="badge memo-cat">{memoCategoryLabel(task.memoCategory)}</span> : null}
-                  <span className={`badge due ${task.dueState}`}>{dueBadgeLabel(task)}</span>
-                </div>
-                <button type="button" onClick={() => void onReclassify(task)}>
-                  {task.kind === "task" ? "メモへ変更" : "タスクへ変更"}
+            <div className="v03-segment" role="tablist" aria-label="フィルタ">
+              {ITEM_FILTER_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={itemsFilter === option.value}
+                  className={`v03-segment-btn ${itemsFilter === option.value ? "active" : ""}`}
+                  onClick={() => saveItemsFilter(option.value)}
+                >
+                  {option.label}
                 </button>
-              </li>
-            ))}
-          </ul>
+              ))}
+            </div>
+
+            <p className="v03-meta-counter">{filteredTasks.length} 件</p>
+
+            {filteredTasks.length === 0 ? (
+              <div className="v03-empty-state">
+                <h3>まだ表示できる項目がありません</h3>
+                <p>{emptyStateText(itemsFilter)}</p>
+              </div>
+            ) : (
+              <ul className="v03-item-list">
+                {filteredTasks.map((task) => (
+                  <li
+                    key={task.id}
+                    data-task-id={task.id}
+                    className={`v03-item-card ${task.id === focusedTaskId ? "is-focused" : ""}`}
+                  >
+                    <p className="v03-item-title">{task.title}</p>
+                    <div className="v03-badge-row">
+                      <span className={`v03-badge kind-${task.kind}`}>{taskKindLabel(task)}</span>
+                      {task.memoCategory ? (
+                        <span className="v03-badge memo-category">{memoCategoryLabel(task.memoCategory)}</span>
+                      ) : null}
+                      <span className={`v03-badge due-state-${task.dueState}`}>{dueBadgeLabel(task)}</span>
+                    </div>
+                    <button type="button" className="v03-reclassify" onClick={() => void onReclassify(task)}>
+                      {task.kind === "task" ? "メモへ変更" : "タスクへ変更"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
+        <section className={`v03-screen ${activeTab === "settings" ? "is-active" : "is-hidden"}`} aria-label="設定画面">
+          <div className="v03-card settings-stage">
+            <div className="v03-card-head">
+              <h2>設定</h2>
+              <p>既定時刻と応答文の文体を端末に保存します。</p>
+            </div>
+
+            <label className="v03-field">
+              既定時刻
+              <input
+                type="time"
+                value={defaultDueTime}
+                onChange={(event) => saveDefaultDueTime(event.target.value)}
+              />
+            </label>
+
+            <label className="v03-field">
+              応答文の文体
+              <select
+                value={responseTone}
+                onChange={(event) => saveResponseTone(event.target.value as ResponseTone)}
+              >
+                {RESPONSE_TONE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <button type="button" className="v03-push-button" onClick={() => void onPushSubscribe()}>
+              通知を有効化
+            </button>
+          </div>
         </section>
       </main>
+
+      <nav className="v03-tabbar" aria-label="メインタブ">
+        {TAB_OPTIONS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            className={`v03-tab ${activeTab === tab.value ? "active" : ""}`}
+            aria-current={activeTab === tab.value ? "page" : undefined}
+            onClick={() => saveActiveTab(tab.value)}
+          >
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
+
+
+

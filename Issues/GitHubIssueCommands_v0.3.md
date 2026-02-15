@@ -1,6 +1,6 @@
 # GitHub Issue Commands v0.3
 
-- 作成日: 2026-02-15
+- 最終更新: 2026-02-15（v0.3再編実装計画反映）
 - 対象リポジトリ: `rainbowstar2400/new`
 - 参照: `Issues/GitHubIssues_v0.3.md`
 
@@ -97,3 +97,4 @@ See Documents/PRD_v0.3.md + Documents/UseCases_v0.3.md
     --body $body
 }
 ```
+

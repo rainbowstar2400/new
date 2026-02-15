@@ -17,6 +17,8 @@ type ScoreBoard = {
   memo: number;
   want: number;
   idea: number;
+  hasDateCue: boolean;
+  hasTaskHint: boolean;
   taskReasons: ReasonCode[];
   memoReasons: ReasonCode[];
 };
@@ -125,6 +127,8 @@ function makeScoreBoard(): ScoreBoard {
     memo: 0,
     want: 0,
     idea: 0,
+    hasDateCue: false,
+    hasTaskHint: false,
     taskReasons: [],
     memoReasons: []
   };
@@ -146,20 +150,30 @@ function inferMemoCategory(board: ScoreBoard): MemoCategory {
   return "misc";
 }
 
+function isExactTaskNoun(compactText: string): boolean {
+  return TASK_NOUN_HINTS.includes(compactText);
+}
+
 function buildScoreBoard(text: string): ScoreBoard {
   const board = makeScoreBoard();
   const compact = text.replace(/[\s。、！？!?.]/g, "");
+  const hasDateCue = hasDateTimeCue(text);
+  const hasTaskHint = hasAny(text, STRONG_TASK_HINTS);
 
-  if (hasDateTimeCue(text)) {
+  board.hasDateCue = hasDateCue;
+  board.hasTaskHint = hasTaskHint;
+
+  if (hasDateCue) {
     addTaskScore(board, 4, "datetime_cue");
   }
 
-  if (hasAny(text, STRONG_TASK_HINTS)) {
+  if (hasTaskHint) {
     addTaskScore(board, 3, "task_hint");
   }
 
   if (hasAny(compact, TASK_NOUN_HINTS)) {
-    addTaskScore(board, compact.length <= 8 ? 3 : 2, "task_noun");
+    const taskNounScore = isExactTaskNoun(compact) ? 5 : compact.length <= 8 ? 3 : 2;
+    addTaskScore(board, taskNounScore, "task_noun");
   }
 
   if (hasAny(text, MEMO_HINTS)) {
@@ -167,12 +181,17 @@ function buildScoreBoard(text: string): ScoreBoard {
   }
 
   if (hasWantExpression(text)) {
-    addMemoScore(board, 4, "want_expression");
-    board.want += 4;
+    addMemoScore(board, 5, "want_expression");
+    board.want += 5;
+
+    if (!hasDateCue && !hasTaskHint) {
+      addMemoScore(board, 2, "want_expression");
+      board.want += 2;
+    }
   }
 
   if (hasAny(text, IDEA_HINTS)) {
-    addMemoScore(board, 3, "idea_expression");
+    addMemoScore(board, 4, "idea_expression");
     board.idea += 4;
   }
 
@@ -222,6 +241,16 @@ export function classifyInput(text: string): ClassificationResult {
 
   const maxScore = Math.max(board.task, board.memo);
   const diff = Math.abs(board.task - board.memo);
+  const wantDominant = board.want >= 5 && !board.hasDateCue && board.task <= board.memo;
+
+  if (wantDominant) {
+    return {
+      kind: "memo",
+      memoCategory: "want",
+      confidence: Math.min(0.95, 0.7 + board.want * 0.04),
+      reason: "want_expression"
+    };
+  }
 
   if (maxScore < 3 || diff <= 1 || (compact.length <= 16 && board.task === 0 && board.memo === 0)) {
     return {

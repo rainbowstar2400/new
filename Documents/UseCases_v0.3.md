@@ -1,6 +1,6 @@
 # Use Cases v0.3
 
-- 作成日: 2026-02-15
+- 最終更新: 2026-02-15（v0.3再編実装計画反映）
 - 参照: `ProductBrief_v0.3.md`, `PRD_v0.3.md`, `UseCases_v0.2.md`, `UseCases_v0.1.md`
 - スコープ: UI再編 + 分類境界 + 一覧調整
 
@@ -57,3 +57,4 @@
 - `〜たい` の `memo(want)` 維持
 - `task_or_memo -> memo_category` 強制
 - `inputMode` 制御（`choice_only`, `choice_then_text_on_negative`）維持
+

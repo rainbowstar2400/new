@@ -1,6 +1,6 @@
 # PRD v0.3
 
-- 作成日: 2026-02-15
+- 最終更新: 2026-02-15（v0.3再編実装計画反映）
 - 対象: Online MVP v0.3（UI再編 + 分類品質改善）
 - 参照: `ProductBrief_v0.3.md`, `UseCases_v0.3.md`, `PRD_v0.2.md`, `PRD_v0.1.md`
 
@@ -103,3 +103,4 @@
 - `Backlog_v0.3.md` の `P1-01/P2-01/P2-02` 完了
 - 主要UCの単体/結合/E2Eが緑化
 - 文書6点（`Documents` 4件 + `Issues` 2件）が同期している
+

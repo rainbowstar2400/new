@@ -1,6 +1,6 @@
 # Backlog v0.3
 
-- 作成日: 2026-02-15
+- 最終更新: 2026-02-15（v0.3再編実装計画反映）
 - 参照: `PRD_v0.3.md`, `UseCases_v0.3.md`, `Backlog_v0.2.md`, `Backlog_v0.1.md`
 - 目的: v0.3再編（UI刷新 + 分類境界 + 一覧調整）の実装タスク定義
 
@@ -47,3 +47,4 @@
 - `P1-01`, `P2-01`, `P2-02` が実装・テスト済み
 - `pnpm test` と `pnpm --filter @new/web test:e2e` が通過
 - `Documents/*_v0.3.md` と `Issues/*_v0.3.md` が同期している
+

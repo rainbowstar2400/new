@@ -1,6 +1,6 @@
 # GitHub Issues v0.3
 
-- 作成日: 2026-02-15
+- 最終更新: 2026-02-15（v0.3再編実装計画反映）
 - 参照: `Documents/Backlog_v0.3.md`, `Documents/PRD_v0.3.md`, `Documents/UseCases_v0.3.md`
 - 目的: v0.3バックログをGitHub Issueへ同期する
 
@@ -51,3 +51,4 @@ Labels: priority:P1|P2, type:UI|UX|Logic, milestone:MVP-v0.3
 - `type:UX`
 - `type:Logic`
 - `milestone:MVP-v0.3`
+

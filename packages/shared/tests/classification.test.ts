@@ -19,6 +19,12 @@ describe("classifyInput", () => {
     expect(result.memoCategory).toBe("want");
   });
 
+  it("prioritizes want for short desire phrase", () => {
+    const result = classifyInput("買い物したい");
+    expect(result.kind).toBe("memo");
+    expect(result.memoCategory).toBe("want");
+  });
+
   it("keeps epistemic mitai as non-want", () => {
     const category = detectMemoCategory("この景色は映画みたいです");
     expect(category).toBe("misc");
@@ -31,6 +37,11 @@ describe("classifyInput", () => {
 
   it("classifies familiar chore nouns as task", () => {
     const result = classifyInput("買い物");
+    expect(result.kind).toBe("task");
+  });
+
+  it("classifies another chore noun as task", () => {
+    const result = classifyInput("掃除");
     expect(result.kind).toBe("task");
   });
 
@@ -63,6 +74,12 @@ describe("classifyInput", () => {
   it("detects idea category", () => {
     const category = detectMemoCategory("作業導線の改善アイデア");
     expect(category).toBe("idea");
+  });
+
+  it("classifies idea statement as memo idea", () => {
+    const result = classifyInput("新機能のアイデア");
+    expect(result.kind).toBe("memo");
+    expect(result.memoCategory).toBe("idea");
   });
 
   it("detects idea from thought wording", () => {

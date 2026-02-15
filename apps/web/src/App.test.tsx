@@ -1,13 +1,43 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import App from "./App";
+import type { Task } from "@new/shared";
+import App from "./App.tsx";
+
+function buildTask(input: {
+  id: string;
+  title: string;
+  kind: "task" | "memo";
+  memoCategory: Task["memoCategory"];
+  dueState: Task["dueState"];
+  dueAt: string | null;
+}): Task {
+  const now = "2026-02-15T00:00:00.000Z";
+  return {
+    id: input.id,
+    installationId: "i1",
+    title: input.title,
+    kind: input.kind,
+    memoCategory: input.memoCategory,
+    dueState: input.dueState,
+    dueAt: input.dueAt,
+    defaultDueTimeApplied: false,
+    status: "active",
+    createdAt: now,
+    updatedAt: now
+  };
+}
 
 beforeEach(() => {
   localStorage.clear();
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+  window.history.replaceState({}, "", "/");
+});
+
 describe("App", () => {
-  it("renders heading", async () => {
+  it("renders heading and bottom tabs", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
@@ -30,7 +60,49 @@ describe("App", () => {
     );
 
     render(<App />);
+
     await waitFor(() => expect(screen.getByRole("heading", { name: "自分専用秘書PWA" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "チャット" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "メモ・タスク" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "設定" })).toBeInTheDocument();
+  });
+
+  it("restores active tab and filter from localStorage", async () => {
+    localStorage.setItem("active_tab_v03", "items");
+    localStorage.setItem("items_filter_v03", "memo");
+
+    const tasks: Task[] = [
+      buildTask({ id: "task-1", title: "洗濯", kind: "task", memoCategory: null, dueState: "no_due", dueAt: null }),
+      buildTask({ id: "task-2", title: "旅行計画", kind: "memo", memoCategory: "want", dueState: "no_due", dueAt: null })
+    ];
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/v1/installations/register")) {
+          return new Response(
+            JSON.stringify({
+              installationId: "i1",
+              accessToken: "t1",
+              timezone: "Asia/Tokyo"
+            }),
+            { status: 200 }
+          );
+        }
+        if (url.includes("/v1/tasks")) {
+          return new Response(JSON.stringify({ items: tasks }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "メモ・タスク" })).toHaveAttribute("aria-current", "page"));
+    expect(screen.getByRole("tab", { name: "メモのみ" })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(screen.getByText("旅行計画")).toBeInTheDocument());
+    expect(screen.queryByText("洗濯")).not.toBeInTheDocument();
   });
 
   it("disables text input during choice_only confirmation", async () => {
@@ -157,15 +229,12 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "送信" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "✕" })).toBeInTheDocument());
-    const lockedTextarea = screen.getByPlaceholderText("例: 明日9時にAさんへ連絡") as HTMLTextAreaElement;
-    expect(lockedTextarea).toBeDisabled();
+    expect((screen.getByPlaceholderText("例: 明日9時にAさんへ連絡") as HTMLTextAreaElement)).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "✕" }));
-    await waitFor(() => {
-      const unlockedTextarea = screen.getByPlaceholderText("例: 明日9時にAさんへ連絡") as HTMLTextAreaElement;
-      expect(unlockedTextarea).toBeEnabled();
-    });
+    await waitFor(() => expect((screen.getByPlaceholderText("例: 明日9時にAさんへ連絡") as HTMLTextAreaElement)).toBeEnabled());
   });
+
   it("stores response tone and sends it in chat payload", async () => {
     let lastChatPayload: Record<string, unknown> | null = null;
 
@@ -213,10 +282,12 @@ describe("App", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByRole("heading", { name: "自分専用秘書PWA" })).toBeInTheDocument());
 
+    fireEvent.click(screen.getByRole("button", { name: "設定" }));
     const toneSelect = screen.getByLabelText("応答文の文体") as HTMLSelectElement;
     fireEvent.change(toneSelect, { target: { value: "friendly" } });
     expect(localStorage.getItem("response_tone")).toBe("friendly");
 
+    fireEvent.click(screen.getByRole("button", { name: "チャット" }));
     const textarea = screen.getByPlaceholderText("例: 明日9時にAさんへ連絡") as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: "洗濯" } });
     fireEvent.click(screen.getByRole("button", { name: "送信" }));
@@ -224,6 +295,49 @@ describe("App", () => {
     await waitFor(() => expect(lastChatPayload).not.toBeNull());
     if (lastChatPayload === null) throw new Error("chat payload is null");
     expect(lastChatPayload["responseTone"]).toBe("friendly");
+  });
+
+  it("moves to items tab and highlights task when taskId query exists", async () => {
+    window.history.replaceState({}, "", "/?taskId=task-focus");
+
+    const tasks: Task[] = [
+      buildTask({
+        id: "task-focus",
+        title: "通知確認タスク",
+        kind: "task",
+        memoCategory: null,
+        dueState: "scheduled",
+        dueAt: "2026-02-16T09:00:00.000Z"
+      })
+    ];
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/v1/installations/register")) {
+          return new Response(
+            JSON.stringify({
+              installationId: "i1",
+              accessToken: "t1",
+              timezone: "Asia/Tokyo"
+            }),
+            { status: 200 }
+          );
+        }
+        if (url.includes("/v1/tasks")) {
+          return new Response(JSON.stringify({ items: tasks }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "メモ・タスク" })).toHaveAttribute("aria-current", "page"));
+    const card = document.querySelector<HTMLElement>("[data-task-id='task-focus']");
+    expect(card).not.toBeNull();
+    expect(card).toHaveClass("is-focused");
   });
 });
 

@@ -1,6 +1,6 @@
 # Product Brief v0.3
 
-- 作成日: 2026-02-15
+- 最終更新: 2026-02-15（v0.3再編実装計画反映）
 - プロダクト名（仮）: 自分専用秘書PWA
 - 方針: Online MVP v0.3（モバイルUI再編）
 - 参照: `ProductBrief_v0.2.md`, `ProductBrief_v0.1.md`
@@ -58,3 +58,4 @@
 - `PRD_v0.3.md` の受け入れ基準を満たす
 - `pnpm test` と `pnpm --filter @new/web test:e2e` が通過
 - `v0.2` 文書未変更を維持し、`v0.3` 文書6点が同期している
+

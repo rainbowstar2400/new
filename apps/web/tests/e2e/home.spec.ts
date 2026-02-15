@@ -69,14 +69,41 @@ async function setupBaseApiMocks(page: Page, tasks: Task[]): Promise<void> {
   });
 }
 
-test("home renders", async ({ page }) => {
+test("home renders and shows bottom tabs", async ({ page }) => {
+  const tasks: Task[] = [];
+  await setupBaseApiMocks(page, tasks);
+
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "自分専用秘書PWA" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "チャット" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "メモ・タスク" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "設定" })).toBeVisible();
+});
+
+test("bottom tab navigation and items filter work", async ({ page }) => {
+  const tasks: Task[] = [
+    buildTask({ id: "task-1", title: "洗濯", kind: "task", memoCategory: null, dueState: "scheduled", dueAt: "2026-02-08T09:00:00.000Z" }),
+    buildTask({ id: "task-2", title: "旅行計画", kind: "memo", memoCategory: "want", dueState: "no_due", dueAt: null })
+  ];
+
+  await setupBaseApiMocks(page, tasks);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "メモ・タスク" }).click();
+  await expect(page.getByText("洗濯")).toBeVisible();
+  await expect(page.getByText("旅行計画")).toBeVisible();
+
+  await page.getByRole("tab", { name: "メモのみ" }).click();
+  await expect(page.getByText("旅行計画")).toBeVisible();
+  await expect(page.getByText("洗濯")).not.toBeVisible();
+
+  await page.getByRole("tab", { name: "タスクのみ" }).click();
+  await expect(page.getByText("洗濯")).toBeVisible();
+  await expect(page.getByText("旅行計画")).not.toBeVisible();
 });
 
 test("memo choice from ambiguous input asks memo category then saves selected category", async ({ page }) => {
   const tasks: Task[] = [];
-
   await setupBaseApiMocks(page, tasks);
 
   await page.route("**/v1/chat/messages", async (route) => {
@@ -146,22 +173,21 @@ test("memo choice from ambiguous input asks memo category then saves selected ca
   await page.getByRole("button", { name: "送信" }).click();
 
   const textarea = page.getByPlaceholder("例: 明日9時にAさんへ連絡");
-  await expect(page.getByRole("button", { name: "メモ" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "メモ", exact: true })).toBeVisible();
   await expect(textarea).toBeDisabled();
-  await page.getByRole("button", { name: "メモ" }).click();
+  await page.getByRole("button", { name: "メモ", exact: true }).click();
 
   await expect(page.getByRole("button", { name: "やりたいこと" })).toBeVisible();
-  await expect(page.locator(".task-item")).toHaveCount(0);
   await page.getByRole("button", { name: "やりたいこと" }).click();
 
-  await expect(page.locator(".task-item .task-title")).toHaveText("転職準備");
-  await expect(page.locator(".task-item .badge.memo-cat")).toHaveText("やりたいこと");
+  await page.getByRole("button", { name: "メモ・タスク" }).click();
+  await expect(page.locator(".v03-item-card .v03-item-title")).toHaveText("転職準備");
+  await expect(page.locator(".v03-item-card .v03-badge.memo-category")).toHaveText("やりたいこと");
   await expect(textarea).toBeEnabled();
 });
 
 test("task title is normalized when input contains due expression", async ({ page }) => {
   const tasks: Task[] = [];
-
   await setupBaseApiMocks(page, tasks);
 
   await page.route("**/v1/chat/messages", async (route) => {
@@ -206,12 +232,12 @@ test("task title is normalized when input contains due expression", async ({ pag
   await page.getByPlaceholder("例: 明日9時にAさんへ連絡").fill("明日18時に洗濯");
   await page.getByRole("button", { name: "送信" }).click();
 
-  await expect(page.locator(".task-item .task-title")).toHaveText("洗濯");
+  await page.getByRole("button", { name: "メモ・タスク" }).click();
+  await expect(page.locator(".v03-item-card .v03-item-title")).toHaveText("洗濯");
 });
 
 test("choice_then_text_on_negative unlocks free text after ✕", async ({ page }) => {
   const tasks: Task[] = [];
-
   await setupBaseApiMocks(page, tasks);
 
   await page.route("**/v1/chat/messages", async (route) => {
@@ -270,8 +296,36 @@ test("choice_then_text_on_negative unlocks free text after ✕", async ({ page }
   await expect(textarea).toBeEnabled();
 });
 
+test("tab navigation works on mobile viewport", async ({ page }) => {
+  const tasks: Task[] = [
+    buildTask({ id: "task-1", title: "洗濯", kind: "task", memoCategory: null, dueState: "no_due", dueAt: null })
+  ];
 
+  await setupBaseApiMocks(page, tasks);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
 
+  await page.getByRole("button", { name: "メモ・タスク" }).click();
+  await expect(page.locator(".v03-item-card .v03-item-title")).toHaveText("洗濯");
+
+  await page.getByRole("button", { name: "設定" }).click();
+  await expect(page.getByLabel("既定時刻")).toBeVisible();
+
+  await page.getByRole("button", { name: "チャット" }).click();
+  await expect(page.getByPlaceholder("例: 明日9時にAさんへ連絡")).toBeVisible();
+});
+test("deep link taskId moves to items tab and highlights card", async ({ page }) => {
+  const tasks: Task[] = [
+    buildTask({ id: "task-focus", title: "定期券更新", kind: "task", memoCategory: null, dueState: "pending_due", dueAt: null }),
+    buildTask({ id: "task-other", title: "買い物", kind: "task", memoCategory: null, dueState: "no_due", dueAt: null })
+  ];
+
+  await setupBaseApiMocks(page, tasks);
+  await page.goto("/?taskId=task-focus");
+
+  await expect(page.getByRole("button", { name: "メモ・タスク" })).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("[data-task-id='task-focus']")).toHaveClass(/is-focused/);
+});
 
 test("response tone setting persists and is sent in chat payload", async ({ page }) => {
   const tasks: Task[] = [];
@@ -303,10 +357,12 @@ test("response tone setting persists and is sent in chat payload", async ({ page
 
   await page.goto("/");
 
+  await page.getByRole("button", { name: "設定" }).click();
   const toneSelect = page.getByLabel("応答文の文体");
   await toneSelect.selectOption("friendly");
   await expect(toneSelect).toHaveValue("friendly");
 
+  await page.getByRole("button", { name: "チャット" }).click();
   await page.getByPlaceholder("例: 明日9時にAさんへ連絡").fill("洗濯");
   await page.getByRole("button", { name: "送信" }).click();
 
@@ -314,6 +370,8 @@ test("response tone setting persists and is sent in chat payload", async ({ page
   expect(latestTone).toBe("friendly");
 
   await page.reload();
+  await page.getByRole("button", { name: "設定" }).click();
   await expect(page.getByLabel("応答文の文体")).toHaveValue("friendly");
 });
+
 
