@@ -105,6 +105,44 @@ describe("App", () => {
     expect(screen.queryByText("洗濯")).not.toBeInTheDocument();
   });
 
+  it("hides due badge for memo items", async () => {
+    const tasks: Task[] = [
+      buildTask({ id: "task-1", title: "洗濯", kind: "task", memoCategory: null, dueState: "no_due", dueAt: null }),
+      buildTask({ id: "memo-1", title: "旅行メモ", kind: "memo", memoCategory: "idea", dueState: "no_due", dueAt: null })
+    ];
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/v1/installations/register")) {
+          return new Response(
+            JSON.stringify({
+              installationId: "i1",
+              accessToken: "t1",
+              timezone: "Asia/Tokyo"
+            }),
+            { status: 200 }
+          );
+        }
+        if (url.includes("/v1/tasks")) {
+          return new Response(JSON.stringify({ items: tasks }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("旅行メモ")).toBeInTheDocument());
+
+    const memoCard = document.querySelector<HTMLElement>("[data-task-id='memo-1']");
+    const taskCard = document.querySelector<HTMLElement>("[data-task-id='task-1']");
+    expect(memoCard).not.toBeNull();
+    expect(taskCard).not.toBeNull();
+    expect(memoCard?.querySelector(".v03-badge[class*='due-state-']")).toBeNull();
+    expect(taskCard?.querySelector(".v03-badge[class*='due-state-']")).not.toBeNull();
+  });
   it("disables text input during choice_only confirmation", async () => {
     vi.stubGlobal(
       "fetch",
@@ -340,5 +378,4 @@ describe("App", () => {
     expect(card).toHaveClass("is-focused");
   });
 });
-
 

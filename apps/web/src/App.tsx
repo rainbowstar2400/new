@@ -489,7 +489,9 @@ export default function App() {
                       {task.memoCategory ? (
                         <span className="v03-badge memo-category">{memoCategoryLabel(task.memoCategory)}</span>
                       ) : null}
-                      <span className={`v03-badge due-state-${task.dueState}`}>{dueBadgeLabel(task)}</span>
+                      {task.kind === "task" ? (
+                        <span className={`v03-badge due-state-${task.dueState}`}>{dueBadgeLabel(task)}</span>
+                      ) : null}
                     </div>
                     <button type="button" className="v03-reclassify" onClick={() => void onReclassify(task)}>
                       {task.kind === "task" ? "メモへ変更" : "タスクへ変更"}
@@ -552,6 +554,4 @@ export default function App() {
     </div>
   );
 }
-
-
 
